@@ -8,6 +8,9 @@ import de.janmeckelholt.stravasummary.AuthActivity
 import de.janmeckelholt.stravasummary.MainActivity
 import de.janmeckelholt.stravasummary.api.StravaRepo
 import dagger.hilt.android.lifecycle.HiltViewModel
+import de.janmeckelholt.stravasummary.Constants
+import de.janmeckelholt.stravasummary.PreferencesDataStore
+import de.janmeckelholt.stravasummary.TimberApplication
 import jakarta.inject.Inject
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,7 +56,12 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
 
     private fun getStravaCode(ctx: MainActivity) {
         viewModelScope.launch {
-            //state.value = MainState.Loading
+            val storedCode = PreferencesDataStore(TimberApplication.appContext).getString(key= Constants.STRAVA_CODE_KEY)
+            if (!storedCode.isNullOrEmpty()) {
+                _stravaCode.value = storedCode
+                Timber.i("Using saved Strava code from DataStore: $storedCode")
+                return@launch
+            }
             try {
                 val intent = Intent(ctx, AuthActivity::class.java)
                 ctx.startActivity(intent)
@@ -86,6 +94,13 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
     private fun fetchToken(code: String?) {
         viewModelScope.launch {
             state.value = MainState.Loading
+            val storedToken = PreferencesDataStore(TimberApplication.appContext).getString(key= Constants.STRAVA_TOKEN_KEY)
+            if (!storedToken.isNullOrEmpty()) {
+                _stravaToken.value = storedToken
+                Timber.i("Using saved Strava token from DataStore: $storedToken")
+                state.value = MainState.SuccessGettingToken(storedToken)
+                return@launch
+            }
             state.value = try {
                 if (code.isNullOrEmpty()) {
                     throw Exception("No auth code provided")
@@ -94,6 +109,7 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
                 if (_stravaToken.value.isNullOrEmpty()) {
                     throw Exception("Failed to retrieve Strava token")
                 }
+                PreferencesDataStore(TimberApplication.appContext).saveString(key= Constants.STRAVA_TOKEN_KEY, value=_stravaToken.value!!)
                 MainState.SuccessGettingToken(_stravaToken.value!!)
             } catch (e: Exception) {
                 MainState.Error(e.localizedMessage)

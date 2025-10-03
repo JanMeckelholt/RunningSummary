@@ -88,7 +88,9 @@ fun MainScreen(vm: MainViewModel, onButtonClickGetCode: () -> Unit, onButtonClic
             Toast.makeText(LocalContext.current, state.error, Toast.LENGTH_SHORT).show()
         }
 
-        is MainState.SuccessGettingToken -> ShowStravaToken(vm = vm, token = state.token)
+        is MainState.SuccessGettingToken -> {
+            ShowStravaToken(vm = vm, token = state.token)
+        }
     }
 }
 

@@ -3,11 +3,16 @@ package de.janmeckelholt.stravasummary
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import timber.log.Timber
 import androidx.core.net.toUri
+import de.janmeckelholt.stravasummary.viewmodel.AuthViewModel
+import kotlin.getValue
 
 class AuthActivity : ComponentActivity() {
+    private val authViewModel: AuthViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         intent?.let {
@@ -32,7 +37,7 @@ class AuthActivity : ComponentActivity() {
 //
 //                    finish()
 
-
+                    authViewModel.saveCode(code)
                     val bundle = Bundle()
                     bundle.putString("code", code)
                     setResult(RESULT_OK, Intent().putExtras(bundle))
@@ -45,7 +50,7 @@ class AuthActivity : ComponentActivity() {
                 else -> {
                     val intentUri = "https://www.strava.com/oauth/mobile/authorize".toUri()
                         .buildUpon()
-                        .appendQueryParameter("response_type", Constants.STRAVA_CODE_KEY)
+                        .appendQueryParameter("response_type", Constants.STRAVA_RESPONSE_TYPE)
                         .appendQueryParameter("client_id", Constants.STRAVA_ClIENT_ID)
                         .appendQueryParameter("redirect_uri", Constants.STRAVA_REDIRECT_URI)
                         .appendQueryParameter("approval_prompt", "auto")

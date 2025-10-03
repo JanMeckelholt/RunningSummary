@@ -80,9 +80,12 @@ dependencies {
     implementation(libs.logging.interceptor)
 
     implementation(libs.hilt.android)
+    implementation(libs.androidx.datastore.core)
+    implementation(libs.androidx.datastore.preferences.core)
     kapt(libs.hilt.android.compiler)
 
     implementation(libs.timber)
+    implementation(libs.androidx.datastore.preferences)
 
 
     testImplementation(libs.junit)

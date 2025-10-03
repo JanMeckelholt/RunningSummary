@@ -9,9 +9,9 @@ open class TimberApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         TimberApplication.appContext = applicationContext
-         Timber.plant(object : Timber.DebugTree() {
+        Timber.plant(object : Timber.DebugTree() {
             override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
-                super.log(priority, "strava_summary_log", message, t)
+                super.log(priority, "strava_summary_$tag", message, t)
             }
             override fun createStackElementTag(element: StackTraceElement): String {
                 val maxLength = 68
