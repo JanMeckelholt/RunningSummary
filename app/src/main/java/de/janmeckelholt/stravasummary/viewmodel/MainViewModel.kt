@@ -6,16 +6,21 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import de.janmeckelholt.stravasummary.AuthActivity
 import de.janmeckelholt.stravasummary.MainActivity
-import de.janmeckelholt.stravasummary.api.StravaRepo
+import de.janmeckelholt.stravasummary.data.StravaRepo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.janmeckelholt.stravasummary.Constants
 import de.janmeckelholt.stravasummary.PreferencesDataStore
 import de.janmeckelholt.stravasummary.TimberApplication
+import de.janmeckelholt.stravasummary.utils.unixTimeStampToPreviousMondayMorning
 import jakarta.inject.Inject
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -24,6 +29,25 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
     val userIntent = Channel<MainIntent>(Channel.UNLIMITED)
     val state = mutableStateOf<MainState>(MainState.Idle)
 
+    private var _displayedDate = MutableStateFlow<Long>( unixTimeStampToPreviousMondayMorning(System.currentTimeMillis() / 1000))
+    val displayedDate : StateFlow<Long> = _displayedDate.asStateFlow()
+
+
+    val formattedDisplayedDate: StateFlow<String> = _displayedDate
+        .map { epoch ->
+            java.time.Instant.ofEpochSecond(epoch)
+                .atZone(java.time.ZoneId.systemDefault())
+                .toLocalDate()
+                .toString()
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = java.time.Instant.ofEpochSecond(_displayedDate.value)
+                .atZone(java.time.ZoneId.systemDefault())
+                .toLocalDate()
+                .toString()
+        )
     private var _stravaCode = MutableStateFlow<String?>(null)
     val stravaCode = _stravaCode.asStateFlow()
     fun setStravaCode(code: String?) {

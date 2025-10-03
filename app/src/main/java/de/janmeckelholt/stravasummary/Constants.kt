@@ -10,4 +10,7 @@ object Constants {
     const val PREFERENCES_DATA_STORE_NAME = "preferencesDataStore"
     const val STRAVA_TOKEN_KEY = "staravaTokenKey"
     const val STRAVA_CODE_KEY = "staravaCodeKey"
+    const val STRAVA_DB_NAME = "strava_db"
+    const val STRAVA_ATHLETE_TABLE_NAME = "strava_athlete_table"
+    const val STRAVA_ACTIVITY_TABLE_NAME = "strava_activity_table"
 }

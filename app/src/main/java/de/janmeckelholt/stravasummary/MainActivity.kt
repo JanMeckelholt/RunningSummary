@@ -80,7 +80,7 @@ fun MainScreen(vm: MainViewModel, onButtonClickGetCode: () -> Unit, onButtonClic
     when (state) {
         is MainState.Idle -> IdleScreen(vm = vm, onButtonClickGetCode = onButtonClickGetCode, onButtonClickGetToken = onButtonClickGetToken)
         is MainState.Loading -> LoadingScreen()
-        is MainState.SuccessGettingAthlete -> Success(text = state.firstName)
+        is MainState.SuccessGettingAthlete -> Success(text = state.firstName, vm= vm)
 
         is MainState.Error -> {
             IdleScreen(vm = vm, onButtonClickGetCode = onButtonClickGetCode, onButtonClickGetToken = onButtonClickGetToken)
@@ -124,10 +124,14 @@ fun LoadingScreen() {
 }
 
 @Composable
-fun Success(text: String) {
+fun Success(text: String, vm: MainViewModel) {
+    val displayedDate by vm.displayedDate.collectAsStateWithLifecycle()
+    val formattedDisplayedDate by vm.formattedDisplayedDate.collectAsStateWithLifecycle()
+
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column {
             Text(text = "Success Text: $text")
+            Text("Current Date: $formattedDisplayedDate ($displayedDate)")
         }
     }
 }

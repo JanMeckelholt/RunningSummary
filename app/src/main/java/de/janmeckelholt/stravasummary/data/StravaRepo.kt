@@ -1,9 +1,10 @@
-package de.janmeckelholt.stravasummary.api
+package de.janmeckelholt.stravasummary.data
 
 import de.janmeckelholt.stravasummary.Constants
-import de.janmeckelholt.stravasummary.models.StravaAthleteResponse
-import de.janmeckelholt.stravasummary.models.StravaTokenRequestBody
-import de.janmeckelholt.stravasummary.models.StravaTokenResponse
+import de.janmeckelholt.stravasummary.data.network.StravaApi
+import de.janmeckelholt.stravasummary.data.network.models.StravaAthleteResponse
+import de.janmeckelholt.stravasummary.data.network.models.StravaTokenRequestBody
+import de.janmeckelholt.stravasummary.data.network.models.StravaTokenResponse
 
 class StravaRepo(private val api: StravaApi) {
     suspend fun getToken(code: String): StravaTokenResponse = api.getToken(

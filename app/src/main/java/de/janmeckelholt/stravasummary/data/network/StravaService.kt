@@ -1,4 +1,4 @@
-package de.janmeckelholt.stravasummary.api
+package de.janmeckelholt.stravasummary.data.network
 
 
 

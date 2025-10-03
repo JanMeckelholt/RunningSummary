@@ -8,9 +8,10 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kapt)
-    alias(libs.plugins.hilt) // Dependency injection
+    alias(libs.plugins.hilt)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.kotlin.serialization) // JSON serialization
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.kotlin.parcelize)
 }
 
 android {
@@ -21,7 +22,7 @@ android {
         val stravaClientId = dotenv.get("STRAVA_ClIENT_ID", "ab")
         val stravaClientSecret = dotenv.get("STRAVA_CLIENT_SECRET", "cd")
         applicationId = "de.janmeckelholt.stravasummary"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -86,6 +87,10 @@ dependencies {
 
     implementation(libs.timber)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    //noinspection KaptUsageInsteadOfKsp
+    kapt(libs.androidx.room.compiler)
 
 
     testImplementation(libs.junit)

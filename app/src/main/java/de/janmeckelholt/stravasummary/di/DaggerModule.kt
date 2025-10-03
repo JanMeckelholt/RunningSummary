@@ -1,7 +1,7 @@
 package de.janmeckelholt.stravasummary.di
 
-import de.janmeckelholt.stravasummary.api.StravaRepo
-import de.janmeckelholt.stravasummary.api.StravaService
+import de.janmeckelholt.stravasummary.data.StravaRepo
+import de.janmeckelholt.stravasummary.data.network.StravaService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
