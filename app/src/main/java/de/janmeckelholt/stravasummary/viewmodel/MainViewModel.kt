@@ -10,7 +10,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import de.janmeckelholt.stravasummary.Steps
 import de.janmeckelholt.stravasummary.data.database.models.ActivityDto
 import de.janmeckelholt.stravasummary.data.database.models.AthleteDto
+import de.janmeckelholt.stravasummary.data.models.WeekSummary
+import de.janmeckelholt.stravasummary.data.models.toWeekSummary
 import de.janmeckelholt.stravasummary.data.network.Credentials
+import de.janmeckelholt.stravasummary.utils.unixTimeStampToDateString
 import de.janmeckelholt.stravasummary.utils.unixTimeStampToPreviousMondayMorning
 import jakarta.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,10 +34,7 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
 
     val formattedDisplayedDate: StateFlow<String> = _displayedDate
         .map { epoch ->
-            java.time.Instant.ofEpochSecond(epoch)
-                .atZone(java.time.ZoneId.systemDefault())
-                .toLocalDate()
-                .toString()
+            unixTimeStampToDateString(epoch)
         }
         .stateIn(
             scope = viewModelScope,
@@ -51,12 +51,26 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
         _step.value = newStep
     }
 
-    private var _activities = MutableStateFlow<List<ActivityDto>>(emptyList())
-    val activities: StateFlow<List<ActivityDto>> = _activities.asStateFlow()
+    fun showWeekOf(epoch: Long) {
+        _step.value = Steps.SHOW_WEEK_SUMMARY
+        _displayedDate.value = unixTimeStampToPreviousMondayMorning(epoch)
+    }
+
+    private var _weekActivities = MutableStateFlow<List<ActivityDto>>(emptyList())
+    val weekActivities: StateFlow<List<ActivityDto>> = _weekActivities.asStateFlow()
+
+    val weekSummary: StateFlow<WeekSummary> = _weekActivities
+        .map { it.toWeekSummary(_displayedDate.value) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = _weekActivities.value.toWeekSummary(_displayedDate.value)
+        )
+
     fun observeActivities() {
         viewModelScope.launch {
             repo.getWeekActivities(_displayedDate.value).collectLatest { list ->
-                _activities.value = list ?: emptyList()
+                _weekActivities.value = list ?: emptyList()
             }
         }
     }

@@ -33,3 +33,21 @@ fun unixTimeStampToNextSundayMidnight(timestamp: Long): Long {
     return nextSunday.toEpochSecond()
 }
 
+
+fun unixTimeStampToDateString(timestamp: Long): String {
+    val zone = java.time.ZoneId.systemDefault()
+    val dateTime = java.time.Instant.ofEpochSecond(timestamp).atZone(zone)
+    return dateTime.toLocalDate().toString()
+}
+
+fun formatSecondsToHMS(seconds: Int): String {
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
+    val secs = seconds % 60
+    return String.format("%02d:%02d:%02d", hours, minutes, secs)
+}
+
+fun formatMetersToKm(meters: Double): String {
+    return String.format("%.2f km", meters / 1000.0)
+}
+
