@@ -11,6 +11,7 @@ object Constants {
     const val STRAVA_ACCESS_TOKEN_KEY = "stravaAccessTokenKey"
     const val STRAVA_REFRESH_TOKEN_KEY = "stravaRefreshTokenKey"
     const val STRAVA_CODE_KEY = "staravaCodeKey"
+    const val STRAVA_ATHLETE_ID_KEY = "staravaAthleteIdKey"
     const val STRAVA_DB_NAME = "strava_db"
     const val STRAVA_ATHLETE_TABLE_NAME = "strava_athlete_table"
     const val STRAVA_ACTIVITY_TABLE_NAME = "strava_activity_table"
@@ -22,7 +23,6 @@ enum class Steps{
     GET_TOKEN,
     GET_ATHLETE,
     GET_ACTIVITIES,
-    OBSERVE_ACTIVITIES,
     SHOW_WEEK_SUMMARY
 
 

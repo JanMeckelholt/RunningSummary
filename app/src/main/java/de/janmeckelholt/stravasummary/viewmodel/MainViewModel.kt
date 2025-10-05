@@ -31,6 +31,12 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
     private var _displayedDate = MutableStateFlow<Long>(unixTimeStampToPreviousMondayMorning(System.currentTimeMillis() / 1000))
     val displayedDate: StateFlow<Long> = _displayedDate.asStateFlow()
 
+    fun setDisplayedDate(epoch: Long) {
+        _displayedDate.value = unixTimeStampToPreviousMondayMorning(epoch)
+        fetchActivities()
+        observeActivities()
+    }
+
 
     val formattedDisplayedDate: StateFlow<String> = _displayedDate
         .map { epoch ->
@@ -69,7 +75,7 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
 
     fun observeActivities() {
         viewModelScope.launch {
-            repo.getWeekActivities(_displayedDate.value).collectLatest { list ->
+            repo.getWeekActivitiesFlow(_displayedDate.value).collectLatest { list ->
                 _weekActivities.value = list ?: emptyList()
             }
         }
@@ -89,24 +95,30 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
             activities?.let { acts ->
                 repo.insertAllActivities(*acts.toTypedArray())
             }
-            _step.value = Steps.OBSERVE_ACTIVITIES
+            _step.value = Steps.SHOW_WEEK_SUMMARY
             observeActivities()
         }
     }
 
     init {
-        //observeActivities()
         viewModelScope.launch {
             Credentials.initialize(stravaRepo = repo)
-            if (!Credentials.code.isNullOrEmpty()) {
+            _step.value = if (!Credentials.code.isNullOrEmpty()) {
                 Timber.i("Using saved Strava code from DataStore: ${Credentials.code}")
                 if (!Credentials.accessToken.isNullOrEmpty()) {
                     Timber.i("Using saved Strava accessToken from DataStore: ${Credentials.accessToken}")
-                    _step.value = Steps.GET_ATHLETE
-                } else _step.value = Steps.GET_TOKEN
+
+                    val storedAthlete = repo.getAthlete(Credentials.athleteId ?: -1)
+                    if (storedAthlete != null) {
+                        Timber.i("Using saved Strava athlete from DataStore: ${storedAthlete.firstName} ${storedAthlete.lastName}")
+                        _athleteDto.value = storedAthlete
+                        _weekActivities.value = repo.getWeekActivities(displayedDate.value) ?: emptyList()
+                        Steps.SHOW_WEEK_SUMMARY
+                    } else Steps.GET_ATHLETE
+                } else Steps.GET_TOKEN
             } else {
                 Timber.i("No Strava code saved. Getting new one...")
-                _step.value = Steps.GET_CODE
+                Steps.GET_CODE
             }
         }
     }
@@ -148,8 +160,9 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
         viewModelScope.launch {
             val athleteDto = repo.fetchAthlete()
             _athleteDto.value = athleteDto
-            Credentials.athleteId = athleteDto.id
+            Credentials.updateAthleteId(athleteDto.id)
             repo.insertAllAthletes(athleteDto)
+            Credentials
             _step.value = Steps.GET_ACTIVITIES
         }
     }

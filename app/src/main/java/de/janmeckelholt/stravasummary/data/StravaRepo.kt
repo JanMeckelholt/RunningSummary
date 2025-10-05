@@ -6,9 +6,11 @@ import de.janmeckelholt.stravasummary.data.database.StravaDao
 import de.janmeckelholt.stravasummary.data.database.models.ActivityDto
 import de.janmeckelholt.stravasummary.data.database.models.AthleteDto
 import de.janmeckelholt.stravasummary.data.network.StravaApi
+import de.janmeckelholt.stravasummary.data.network.StravaResult
 import de.janmeckelholt.stravasummary.data.network.models.StravaRefreshTokenRequestBody
 import de.janmeckelholt.stravasummary.data.network.models.StravaTokenRequestWithCodeBody
 import de.janmeckelholt.stravasummary.data.network.models.StravaTokenResponse
+import de.janmeckelholt.stravasummary.data.network.safeApiCall
 import de.janmeckelholt.stravasummary.utils.unixTimeStampToNextSundayMidnight
 import de.janmeckelholt.stravasummary.utils.unixTimeStampToPreviousMondayMorning
 import kotlinx.coroutines.Dispatchers
@@ -41,18 +43,43 @@ class StravaRepo(private val api: StravaApi, private val dao: StravaDao) {
     )
 
     suspend fun fetchAthlete(): AthleteDto = api.getAthlete().toAthleteDto()
-    suspend fun fetchWeekActivities(unixTimeStamp: Long): List<ActivityDto>? = api.getActivities(before = unixTimeStampToNextSundayMidnight(unixTimeStamp), after = unixTimeStampToPreviousMondayMorning(unixTimeStamp)).map { it.toActivityDto() }
-    fun getAthlete(id: Long): AthleteDto? = dao.getAthleteById(id = id)
+    suspend fun fetchWeekActivities(unixTimeStamp: Long): List<ActivityDto>? {
+        val res = safeApiCall {
+            api.getActivities(before = unixTimeStampToNextSundayMidnight(unixTimeStamp), after = unixTimeStampToPreviousMondayMorning(unixTimeStamp))
+        }
+        return when (res) {
+            is StravaResult.Success -> {
+                res.data.map { it.toActivityDto() }
+            }
+            is StravaResult.Error -> {
+                null
+            }
+        }
+    }
+
+
+    suspend fun getAthlete(id: Long): AthleteDto? {
+        return withContext(Dispatchers.IO) {
+            dao.getAthleteById(id = id)
+        }
+    }
+
     fun getActivities(before: Long, after: Long): Flow<List<ActivityDto>?> = dao.getActivitiesLiveData(before = before, after = after)
-    fun getWeekActivities(unixTimeStamp: Long): Flow<List<ActivityDto>?> = dao.getActivitiesLiveData(before = unixTimeStampToNextSundayMidnight(unixTimeStamp), after = unixTimeStampToPreviousMondayMorning(unixTimeStamp))
+    fun getWeekActivitiesFlow(unixTimeStamp: Long): Flow<List<ActivityDto>?> = dao.getActivitiesLiveData(before = unixTimeStampToNextSundayMidnight(unixTimeStamp), after = unixTimeStampToPreviousMondayMorning(unixTimeStamp))
+    suspend fun getWeekActivities(unixTimeStamp: Long): List<ActivityDto>? {
+        return withContext(Dispatchers.IO) {
+            dao.getActivities(before = unixTimeStampToNextSundayMidnight(unixTimeStamp), after = unixTimeStampToPreviousMondayMorning(unixTimeStamp))
+        }
+    }
+
     suspend fun insertAllActivities(vararg activities: ActivityDto) {
-        withContext(Dispatchers.IO){
+        withContext(Dispatchers.IO) {
             dao.insertAllActivities(activities = activities)
         }
     }
 
     suspend fun insertAllAthletes(vararg athletes: AthleteDto) {
-        withContext(Dispatchers.IO){
+        withContext(Dispatchers.IO) {
             dao.insertAllAthletes(athletes = athletes)
         }
     }

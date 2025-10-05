@@ -26,6 +26,8 @@ object Credentials {
                 accessToken = PreferencesDataStore(TimberApplication.appContext).getString(Constants.STRAVA_ACCESS_TOKEN_KEY)
                 refreshToken = PreferencesDataStore(TimberApplication.appContext).getString(Constants.STRAVA_REFRESH_TOKEN_KEY)
                 code = PreferencesDataStore(TimberApplication.appContext).getString(Constants.STRAVA_CODE_KEY)
+                athleteId = PreferencesDataStore(TimberApplication.appContext).getLong(Constants.STRAVA_ATHLETE_ID_KEY)
+                Timber.i("___athleteId: $athleteId")
             }
         }
     }
@@ -34,6 +36,13 @@ object Credentials {
         code = newCode
         GlobalScope.launch(Dispatchers.IO) {
             PreferencesDataStore(TimberApplication.appContext).saveString(Constants.STRAVA_CODE_KEY, newCode)
+        }
+    }
+
+    fun updateAthleteId(newAthleteId: Long) {
+        athleteId = newAthleteId
+        GlobalScope.launch(Dispatchers.IO) {
+            PreferencesDataStore(TimberApplication.appContext).saveLong(Constants.STRAVA_ATHLETE_ID_KEY, newAthleteId)
         }
     }
 

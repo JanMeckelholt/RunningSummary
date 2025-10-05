@@ -1,8 +1,11 @@
 package de.janmeckelholt.stravasummary.utils
 
+import java.text.SimpleDateFormat
 import java.time.DayOfWeek
 import java.time.temporal.ChronoField
 import java.time.temporal.TemporalAdjusters
+import java.util.Date
+import java.util.Locale
 
 fun Int.ordinal() = "$this" + when {
     (this % 100 in 11..13) -> "th"
@@ -49,5 +52,10 @@ fun formatSecondsToHMS(seconds: Int): String {
 
 fun formatMetersToKm(meters: Double): String {
     return String.format("%.2f km", meters / 1000.0)
+}
+
+fun convertMillisToDateStr(millis: Long): String {
+    val sdf = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+    return sdf.format(Date(millis))
 }
 
