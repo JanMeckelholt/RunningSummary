@@ -1,8 +1,13 @@
 package de.janmeckelholt.stravasummary.data.network.models
 
-data class Activity(
+import de.janmeckelholt.stravasummary.data.database.models.ActivityDto
+import kotlinx.serialization.Serializable
+import java.time.Instant
+
+@Serializable
+data class StravaActivity(
     val resource_state: Int? = null,
-    val athlete: Athlete? = null,
+    val athlete: StravaAthlete? = null,
     val name: String? = null,
     val distance: Double? = null,
     val moving_time: Int? = null,
@@ -52,11 +57,34 @@ data class Activity(
     val pr_count: Int? = null,
     val total_photo_count: Int? = null,
     val has_kudoed: Boolean? = null
-)
-data class Athlete(
-    val id: Long? = null,
-    val resource_state: Int? = null
-)
+) {
+    fun toActivityDto(): ActivityDto {
+        val startDateUnix = start_date?.let {
+            try {
+                Instant.parse(it).epochSecond
+            } catch (e: Exception) {
+                null
+            }
+        }
+        return ActivityDto(
+            id = id ?: 0,
+            athleteId = athlete?.id,
+            name = name,
+            distance = distance,
+            movingTime = moving_time,
+            elapsedTime = elapsed_time,
+            totalElevationGain = total_elevation_gain,
+            type = type,
+            startDate = start_date,
+            startDateLocal = start_date_local,
+            startDateUnix = startDateUnix,
+            timezone = timezone,
+            utcOffset = utc_offset,
+            sportType = sport_type
+        )
+    }
+}
+@Serializable
 data class MapData(
     val id: String? = null,
     val summary_polyline: String? = null,

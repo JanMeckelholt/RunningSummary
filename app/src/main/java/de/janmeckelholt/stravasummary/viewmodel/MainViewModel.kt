@@ -1,24 +1,23 @@
 package de.janmeckelholt.stravasummary.viewmodel
 
+import android.content.Context
 import android.content.Intent
-import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import de.janmeckelholt.stravasummary.AuthActivity
-import de.janmeckelholt.stravasummary.MainActivity
 import de.janmeckelholt.stravasummary.data.StravaRepo
 import dagger.hilt.android.lifecycle.HiltViewModel
-import de.janmeckelholt.stravasummary.Constants
-import de.janmeckelholt.stravasummary.PreferencesDataStore
-import de.janmeckelholt.stravasummary.TimberApplication
+import de.janmeckelholt.stravasummary.Steps
+import de.janmeckelholt.stravasummary.data.database.models.ActivityDto
+import de.janmeckelholt.stravasummary.data.database.models.AthleteDto
+import de.janmeckelholt.stravasummary.data.network.Credentials
 import de.janmeckelholt.stravasummary.utils.unixTimeStampToPreviousMondayMorning
 import jakarta.inject.Inject
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -26,11 +25,8 @@ import timber.log.Timber
 
 @HiltViewModel
 class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewModel() {
-    val userIntent = Channel<MainIntent>(Channel.UNLIMITED)
-    val state = mutableStateOf<MainState>(MainState.Idle)
-
-    private var _displayedDate = MutableStateFlow<Long>( unixTimeStampToPreviousMondayMorning(System.currentTimeMillis() / 1000))
-    val displayedDate : StateFlow<Long> = _displayedDate.asStateFlow()
+    private var _displayedDate = MutableStateFlow<Long>(unixTimeStampToPreviousMondayMorning(System.currentTimeMillis() / 1000))
+    val displayedDate: StateFlow<Long> = _displayedDate.asStateFlow()
 
 
     val formattedDisplayedDate: StateFlow<String> = _displayedDate
@@ -48,41 +44,64 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
                 .toLocalDate()
                 .toString()
         )
-    private var _stravaCode = MutableStateFlow<String?>(null)
-    val stravaCode = _stravaCode.asStateFlow()
-    fun setStravaCode(code: String?) {
-        Timber.i("setting stravaCode: $code.")
-        _stravaCode.value = code
+
+    private var _step = MutableStateFlow<Steps>(Steps.GET_CODE)
+    val step: StateFlow<Steps> = _step.asStateFlow()
+    fun setStep(newStep: Steps) {
+        _step.value = newStep
     }
 
-    private var _stravaToken = MutableStateFlow<String?>(null)
-    val stravaToken = _stravaToken.asStateFlow()
-    fun setStravaToken(token: String?) {
-        Timber.i("setting stravaToken: $token.")
-        _stravaToken.value = token
-    }
-
-    init {
-        handleIntent()
-    }
-
-    private fun handleIntent() {
+    private var _activities = MutableStateFlow<List<ActivityDto>>(emptyList())
+    val activities: StateFlow<List<ActivityDto>> = _activities.asStateFlow()
+    fun observeActivities() {
         viewModelScope.launch {
-            userIntent.consumeAsFlow().collect { collector ->
-                when (collector) {
-                    is MainIntent.GetStravaCode -> getStravaCode(ctx = collector.ctx)
-                    is MainIntent.FetchStravaToken -> fetchToken(_stravaCode.value)
-                    is MainIntent.FetchAthlete -> fetchAthlete(_stravaToken.value)
-                }
+            repo.getWeekActivities(_displayedDate.value).collectLatest { list ->
+                _activities.value = list ?: emptyList()
             }
         }
     }
 
-    private fun getStravaCode(ctx: MainActivity) {
+    private var _athleteDto = MutableStateFlow<AthleteDto?>(null)
+    val athleteDto: StateFlow<AthleteDto?> = _athleteDto.asStateFlow()
+
+    fun fetchActivities() {
         viewModelScope.launch {
-            val storedCode = PreferencesDataStore(TimberApplication.appContext).getString(key= Constants.STRAVA_CODE_KEY)
+            val token = Credentials.updateAccessToken()
+            if (token.isNullOrEmpty()) {
+                Timber.e("No Strava token provided")
+                return@launch
+            }
+            val activities = repo.fetchWeekActivities(unixTimeStamp = _displayedDate.value)
+            activities?.let { acts ->
+                repo.insertAllActivities(*acts.toTypedArray())
+            }
+            _step.value = Steps.OBSERVE_ACTIVITIES
+            observeActivities()
+        }
+    }
+
+    init {
+        //observeActivities()
+        viewModelScope.launch {
+            Credentials.initialize(stravaRepo = repo)
+            if (!Credentials.code.isNullOrEmpty()) {
+                Timber.i("Using saved Strava code from DataStore: ${Credentials.code}")
+                if (!Credentials.accessToken.isNullOrEmpty()) {
+                    Timber.i("Using saved Strava accessToken from DataStore: ${Credentials.accessToken}")
+                    _step.value = Steps.GET_ATHLETE
+                } else _step.value = Steps.GET_TOKEN
+            } else {
+                Timber.i("No Strava code saved. Getting new one...")
+                _step.value = Steps.GET_CODE
+            }
+        }
+    }
+
+    fun getStravaCode(ctx: Context) {
+        _step.value = Steps.GET_CODE
+        viewModelScope.launch {
+            val storedCode = Credentials.code
             if (!storedCode.isNullOrEmpty()) {
-                _stravaCode.value = storedCode
                 Timber.i("Using saved Strava code from DataStore: $storedCode")
                 return@launch
             }
@@ -91,68 +110,33 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
                 ctx.startActivity(intent)
 
             } catch (e: Exception) {
-                state.value = MainState.Error(e.localizedMessage)
+                Timber.e(e.localizedMessage)
             }
         }
     }
 
-//    fun handleActivityResult(resultCode: Int, data: Intent?) {
-//        viewModelScope.launch {
-//            state.value = MainState.Loading
-//            state.value = try {
-//                if (resultCode == RESULT_OK && data != null) {
-//                    Timber.i("____Received data: $data")
-//                    val code = data.getStringExtra("code") ?: throw Exception("No auth code found")
-//                    Timber.i("____Received code: $code")
-//                    MainState.SuccessGettingToken(token = repo.getToken(code).access_token)
-//                } else {
-//                    throw Exception("Authentication failed")
-//                }
-//            } catch (e: Exception) {
-//                MainState.Error(e.localizedMessage)
-//            }
-//        }
-//    }
-
-
-    private fun fetchToken(code: String?) {
+    fun getAccessToken() {
+        _step.value = Steps.GET_TOKEN
         viewModelScope.launch {
-            state.value = MainState.Loading
-            val storedToken = PreferencesDataStore(TimberApplication.appContext).getString(key= Constants.STRAVA_TOKEN_KEY)
-            if (!storedToken.isNullOrEmpty()) {
-                _stravaToken.value = storedToken
-                Timber.i("Using saved Strava token from DataStore: $storedToken")
-                state.value = MainState.SuccessGettingToken(storedToken)
-                return@launch
-            }
-            state.value = try {
-                if (code.isNullOrEmpty()) {
-                    throw Exception("No auth code provided")
-                }
-                _stravaToken.value = repo.getToken(code).access_token
-                if (_stravaToken.value.isNullOrEmpty()) {
-                    throw Exception("Failed to retrieve Strava token")
-                }
-                PreferencesDataStore(TimberApplication.appContext).saveString(key= Constants.STRAVA_TOKEN_KEY, value=_stravaToken.value!!)
-                MainState.SuccessGettingToken(_stravaToken.value!!)
-            } catch (e: Exception) {
-                MainState.Error(e.localizedMessage)
-            }
+            val t = Credentials.updateAccessToken()
+            Timber.i("Access token: $t")
+            _step.value = Steps.GET_ATHLETE
         }
     }
 
-    private fun fetchAthlete(token: String?) {
+    fun fetchAthlete() {
+        _step.value = Steps.GET_ATHLETE
+        val token = Credentials.updateAccessToken()
         if (token.isNullOrEmpty()) {
-            state.value = MainState.Error("No Strava token provided")
+            Timber.e("No Strava token provided")
             return
         }
         viewModelScope.launch {
-            state.value = MainState.Loading
-            state.value = try {
-                MainState.SuccessGettingAthlete(firstName = repo.getAthlete(token).firstname ?: "No Athlete Found")
-            } catch (e: Exception) {
-                MainState.Error(e.localizedMessage)
-            }
+            val athleteDto = repo.fetchAthlete()
+            _athleteDto.value = athleteDto
+            Credentials.athleteId = athleteDto.id
+            repo.insertAllAthletes(athleteDto)
+            _step.value = Steps.GET_ACTIVITIES
         }
     }
 }

@@ -28,14 +28,6 @@ class AuthActivity : ComponentActivity() {
                     }
                     val code = it.data?.getQueryParameters("code")?.get(0).toString()
                     Timber.i("___code: $code")
-//                    val resultIntent = Intent(this@AuthActivity, MainActivity::class.java).apply {
-//                        putExtra("code", code)
-//                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP and Intent.FLAG_FROM_BACKGROUND
-//                    }
-//                    setResult(Activity.RESULT_OK, resultIntent)
-//                    ContextCompat.startActivity(this@AuthActivity, resultIntent, null)
-//
-//                    finish()
 
                     authViewModel.saveCode(code)
                     val bundle = Bundle()
@@ -51,7 +43,7 @@ class AuthActivity : ComponentActivity() {
                     val intentUri = "https://www.strava.com/oauth/mobile/authorize".toUri()
                         .buildUpon()
                         .appendQueryParameter("response_type", Constants.STRAVA_RESPONSE_TYPE)
-                        .appendQueryParameter("client_id", Constants.STRAVA_ClIENT_ID)
+                        .appendQueryParameter("client_id", BuildConfig.STRAVA_CLIENT_ID)
                         .appendQueryParameter("redirect_uri", Constants.STRAVA_REDIRECT_URI)
                         .appendQueryParameter("approval_prompt", "auto")
                         .appendQueryParameter("scope", Constants.STRAVA_SCOPE)

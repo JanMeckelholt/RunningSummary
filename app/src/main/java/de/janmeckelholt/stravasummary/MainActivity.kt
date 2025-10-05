@@ -1,32 +1,33 @@
 package de.janmeckelholt.stravasummary
 
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.viewModelScope
 import de.janmeckelholt.stravasummary.theme.RunningTheme
-import de.janmeckelholt.stravasummary.viewmodel.MainIntent
-import de.janmeckelholt.stravasummary.viewmodel.MainState
 import de.janmeckelholt.stravasummary.viewmodel.MainViewModel
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.launch
+import de.janmeckelholt.stravasummary.data.network.Credentials
 import timber.log.Timber
 
 @AndroidEntryPoint
@@ -40,33 +41,15 @@ class MainActivity : ComponentActivity() {
             intent.extras?.getString("code")?.let {
                 val code = it
                 Timber.i("Received code: $code")
-                mainViewModel.setStravaCode(code)
+                Credentials.updateCode(code)
+                mainViewModel.setStep(Steps.GET_TOKEN)
             }
         }
-
-        val onButtonClickGetCode: () -> Unit = {
-            lifecycleScope.launch {
-                mainViewModel.userIntent.send(MainIntent.GetStravaCode(ctx = this@MainActivity))
-            }
-        }
-
-        val onButtonClickGetToken: () -> Unit = {
-            lifecycleScope.launch {
-                mainViewModel.userIntent.send(MainIntent.FetchStravaToken())
-            }
-        }
-
-
-
         enableEdgeToEdge()
         setContent {
             RunningTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    MainScreen(
-                        vm = mainViewModel,
-                        onButtonClickGetCode = onButtonClickGetCode,
-                        onButtonClickGetToken = onButtonClickGetToken
-                    )
+                    MainScreen(vm = mainViewModel)
                 }
             }
         }
@@ -74,25 +57,40 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen(vm: MainViewModel, onButtonClickGetCode: () -> Unit, onButtonClickGetToken: () -> Unit) {
-    val state = vm.state.value
+fun MainScreen(vm: MainViewModel) {
+    val context = LocalContext.current
+    val step by vm.step.collectAsStateWithLifecycle()
+    val displayedDate by vm.displayedDate.collectAsStateWithLifecycle()
+    val formattedDisplayedDate by vm.formattedDisplayedDate.collectAsStateWithLifecycle()
+    val activities by vm.activities.collectAsStateWithLifecycle()
+    val athleteDto by vm.athleteDto.collectAsStateWithLifecycle()
+    if (step == Steps.INITIAL) {
+        LoadingScreen()
+    } else {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column {
+                Text(text = "Strava-Client-ID: ${BuildConfig.STRAVA_CLIENT_ID}")
+                Text(text = "Date-Week: $formattedDisplayedDate ($displayedDate)")
+                Text(text = "Strava Code: ${Credentials.code}")
+                Text(text = "Strava Token: ${Credentials.accessToken}")
+                Text(text = "Athlete: ${athleteDto?.firstName ?: "No Athlete"} ${athleteDto?.lastName ?: ""}")
+                Text(text = "Activities this week: ${activities.size}")
+                when (step) {
+                    Steps.GET_CODE -> MainButton(btnText = "Get Strava Code", onButtonClick = { vm.getStravaCode(context) })
+                    Steps.GET_TOKEN -> MainButton(btnText = "Get Strava Token", onButtonClick = { vm.getAccessToken() })
+                    Steps.GET_ATHLETE -> MainButton(btnText = "Get Strava Athlete", onButtonClick = { vm.fetchAthlete() })
+                    Steps.GET_ACTIVITIES -> MainButton(btnText = "Get Strava Activities", onButtonClick = { vm.fetchActivities() })
+                    Steps.OBSERVE_ACTIVITIES -> {}
+                    Steps.INITIAL -> {}
+                }
+            }
 
-    when (state) {
-        is MainState.Idle -> IdleScreen(vm = vm, onButtonClickGetCode = onButtonClickGetCode, onButtonClickGetToken = onButtonClickGetToken)
-        is MainState.Loading -> LoadingScreen()
-        is MainState.SuccessGettingAthlete -> Success(text = state.firstName, vm= vm)
-
-        is MainState.Error -> {
-            IdleScreen(vm = vm, onButtonClickGetCode = onButtonClickGetCode, onButtonClickGetToken = onButtonClickGetToken)
-            Timber.i("Error: ${state.error}")
-            Toast.makeText(LocalContext.current, state.error, Toast.LENGTH_SHORT).show()
-        }
-
-        is MainState.SuccessGettingToken -> {
-            ShowStravaToken(vm = vm, token = state.token)
         }
     }
 }
+
+
+
 
 @Composable
 fun MainButton(btnText: String, onButtonClick: () -> Unit) {
@@ -103,52 +101,25 @@ fun MainButton(btnText: String, onButtonClick: () -> Unit) {
 }
 
 @Composable
-fun IdleScreen(vm: MainViewModel, onButtonClickGetCode: () -> Unit, onButtonClickGetToken: () -> Unit) {
-    val code by vm.stravaCode.collectAsStateWithLifecycle()
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column {
-            if (code.isNullOrEmpty()) MainButton(btnText = "Get Strava Code", onButtonClick = onButtonClickGetCode)
-            else {
-                Text(text = "Strava Code: $code")
-                MainButton(btnText = "Get Strava Token", onButtonClick = onButtonClickGetToken)
-            }
-        }
-    }
-}
-
-@Composable
 fun LoadingScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator()
-    }
-}
-
-@Composable
-fun Success(text: String, vm: MainViewModel) {
-    val displayedDate by vm.displayedDate.collectAsStateWithLifecycle()
-    val formattedDisplayedDate by vm.formattedDisplayedDate.collectAsStateWithLifecycle()
-
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(color = Color.Black)
+    ) {
         Column {
-            Text(text = "Success Text: $text")
-            Text("Current Date: $formattedDisplayedDate ($displayedDate)")
-        }
-    }
-}
-
-@Composable
-fun ShowStravaToken(vm: MainViewModel, token: String) {
-    val onButtonClick: () -> Unit = {
-        vm.viewModelScope.launch {
-            vm.userIntent.send(MainIntent.FetchAthlete())
-        }
-
-    }
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column {
-            Text(text = "Strava Token: $token")
-            MainButton(btnText = "Get Strava Athlete", onButtonClick = onButtonClick)
+            Spacer(modifier = Modifier.weight(1f))
+            Text(text = "Loading...", color = Color.White, modifier = Modifier.align(Alignment.CenterHorizontally))
+            Spacer(modifier = Modifier.weight(1f))
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp),
+                color = Color.White,
+            )
+            Spacer(modifier = Modifier.weight(1f))
         }
 
     }
+
 }
