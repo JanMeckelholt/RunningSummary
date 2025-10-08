@@ -1,5 +1,6 @@
 package de.janmeckelholt.stravasummary.ui
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +22,7 @@ import de.janmeckelholt.stravasummary.viewmodel.MainViewModel
 @Composable
 fun WeekSummaryScreen(vm: MainViewModel) {
     val weekSummary by vm.weekSummary.collectAsStateWithLifecycle()
+    val textColor = if (isSystemInDarkTheme()) Color.White else Color.Black
     Box(modifier = Modifier
         .fillMaxSize(),
         contentAlignment = Alignment.Center) {
@@ -30,12 +32,12 @@ fun WeekSummaryScreen(vm: MainViewModel) {
                 Spacer(modifier = Modifier.weight(4f))
                 DatePickerDocked(vm)
                 Spacer(modifier = Modifier.weight(1f))
-                Text(text = "Start of Week: ${unixTimeStampToDateString(weekSummary.startOfWeek)}", color = Color.Black, modifier = Modifier.align(Alignment.CenterHorizontally))
-                Text(text = "Number of Runs: ${weekSummary.numberOfRuns}", color = Color.Black, modifier = Modifier.align(Alignment.CenterHorizontally))
-                Text(text = "Distance: ${formatMetersToKm(weekSummary.totalDistance)}", color = Color.Black, modifier = Modifier.align(Alignment.CenterHorizontally))
-                Text(text = "Moving Time: ${formatSecondsToHMS(weekSummary.totalMovingTime)}", color = Color.Black, modifier = Modifier.align(Alignment.CenterHorizontally))
-                Text(text = "Elevation Gain: ${weekSummary.totalElevationGain}", color = Color.Black, modifier = Modifier.align(Alignment.CenterHorizontally))
-                Text(text = "Number of Others: ${weekSummary.numberOfOthers}", color = Color.Black, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Text(text = "Start of Week: ${unixTimeStampToDateString(weekSummary.startOfWeek)}", color = textColor, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Text(text = "Number of Runs: ${weekSummary.numberOfRuns}", color = textColor, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Text(text = "Distance: ${formatMetersToKm(weekSummary.totalDistance)}", color = textColor, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Text(text = "Moving Time: ${formatSecondsToHMS(weekSummary.totalMovingTime)}", color = textColor, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Text(text = "Elevation Gain: ${weekSummary.totalElevationGain}", color = textColor, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Text(text = "Number of Others: ${weekSummary.numberOfOthers}", color = textColor, modifier = Modifier.align(Alignment.CenterHorizontally))
                 Spacer(modifier = Modifier.weight(4f))
             }
             Spacer(modifier = Modifier.weight(2f))
