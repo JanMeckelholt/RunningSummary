@@ -100,6 +100,15 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
         }
     }
 
+    fun refreshActivities() {
+        viewModelScope.launch {
+            // Clear the cache to force a fresh fetch from remote
+            repo.clearActivitiesCache()
+            Timber.i("Cache cleared, fetching fresh activities from remote")
+            fetchActivities()
+        }
+    }
+
     init {
         viewModelScope.launch {
             Credentials.initialize(stravaRepo = repo)

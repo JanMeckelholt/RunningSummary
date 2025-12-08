@@ -1,6 +1,8 @@
 package de.janmeckelholt.stravasummary.ui.composables
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -11,7 +13,6 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -27,9 +28,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.janmeckelholt.stravasummary.utils.convertMillisToDateStr
 import de.janmeckelholt.stravasummary.viewmodel.MainViewModel
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.ZoneId
+import java.time.temporal.TemporalAdjusters
 import timber.log.Timber
 
 
@@ -45,23 +51,40 @@ fun DatePickerDocked(vm: MainViewModel) {
     val selectedDate = convertMillisToDateStr(displayedDate * 1000)
 
     Box() {
-        OutlinedTextField(
-            value = selectedDate,
-            onValueChange = {},
-            label = { Text(convertMillisToDateStr(displayedDate)) },
-            readOnly = true,
-            trailingIcon = {
-                IconButton(onClick = { showDatePicker = !showDatePicker }) {
+        // Wrap the TextField in a container to constrain the overlay size
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+        ) {
+            OutlinedTextField(
+                value = selectedDate,
+                onValueChange = {},
+                label = { Text(selectedDate) },
+                readOnly = true,
+                trailingIcon = {
                     Icon(
                         imageVector = Icons.Default.DateRange,
                         contentDescription = "Select date"
                     )
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp)
-        )
+                },
+                interactionSource = remember { MutableInteractionSource() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+            )
+            // Clickable overlay exactly matching the TextField size
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .zIndex(1f)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { showDatePicker = true }
+            )
+        }
 
         if (showDatePicker) {
             Popup(
@@ -83,9 +106,16 @@ fun DatePickerDocked(vm: MainViewModel) {
                     // Handle date selection and close popup
                     if (datePickerState.selectedDateMillis != null) {
                         LaunchedEffect(datePickerState.selectedDateMillis) {
-                            vm.setDisplayedDate(datePickerState.selectedDateMillis!! / 1000)
+                            val selectedMillis = datePickerState.selectedDateMillis!!
+                            // Convert to local ZonedDateTime and snap to Monday of that week
+                            val zone = ZoneId.systemDefault()
+                            val selectedDateTime = Instant.ofEpochMilli(selectedMillis).atZone(zone)
+                            val mondayDateTime = selectedDateTime.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                            val mondayStartOfDay = mondayDateTime.toLocalDate().atStartOfDay(zone)
+                            val mondaySeconds = mondayStartOfDay.toEpochSecond()
+                            vm.setDisplayedDate(mondaySeconds)
                             showDatePicker = false
-                            Timber.i("___ Selected date millis: ${datePickerState.selectedDateMillis}")
+                            Timber.i("___ Selected millis: $selectedMillis -> Monday (local) seconds: $mondaySeconds")
                             datePickerState.selectedDateMillis = null
                         }
                     }

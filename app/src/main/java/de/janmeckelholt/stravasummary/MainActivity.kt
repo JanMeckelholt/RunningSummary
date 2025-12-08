@@ -52,7 +52,10 @@ fun MainScreen(vm: MainViewModel) {
     when (step) {
         Steps.INITIAL -> LoadingScreen()
         Steps.GET_CODE, Steps.GET_TOKEN, Steps.GET_ATHLETE, Steps.GET_ACTIVITIES -> PreparationScreen(vm)
-        Steps.SHOW_WEEK_SUMMARY -> WeekSummaryScreen(vm)
+        Steps.SHOW_WEEK_SUMMARY -> {
+            vm.fetchActivities()
+            WeekSummaryScreen(vm)
+        }
     }
 
 }

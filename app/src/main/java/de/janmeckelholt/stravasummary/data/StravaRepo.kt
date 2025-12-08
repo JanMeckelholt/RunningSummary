@@ -15,10 +15,44 @@ import de.janmeckelholt.stravasummary.utils.unixTimeStampToNextSundayMidnight
 import de.janmeckelholt.stravasummary.utils.unixTimeStampToPreviousMondayMorning
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 class StravaRepo(private val api: StravaApi, private val dao: StravaDao) {
+
+    // In-memory cache for activities - stores per day
+    private val cacheMutex = Mutex()
+    private data class CachedDay(
+        val activities: List<ActivityDto>, // Empty list if no activities for that day
+        val timestamp: Long
+    )
+    // Map of day (start of day in unix timestamp) to cached activities for that day
+    private val activitiesCache: MutableMap<Long, CachedDay> = mutableMapOf()
+    private val cacheValidityDuration = 60 * 60 * 1000L // 1 hour in milliseconds
+
+    /**
+     * Gets the start of day (midnight) for a given unix timestamp
+     */
+    private fun getStartOfDay(unixTimestamp: Long): Long {
+        return (unixTimestamp / 86400) * 86400 // 86400 seconds in a day
+    }
+
+    /**
+     * Gets all days (as start of day timestamps) between after and before
+     */
+    private fun getDaysBetween(after: Long, before: Long): List<Long> {
+        val days = mutableListOf<Long>()
+        var currentDay = getStartOfDay(after)
+        val endDay = getStartOfDay(before)
+
+        while (currentDay <= endDay) {
+            days.add(currentDay)
+            currentDay += 86400 // Add one day
+        }
+        return days
+    }
     suspend fun getTokenWithCode(code: String): StravaTokenResponse {
         Timber.i("___StravaRepo: Getting token with code... $code")
         val ci = BuildConfig.STRAVA_CLIENT_ID
@@ -44,16 +78,71 @@ class StravaRepo(private val api: StravaApi, private val dao: StravaDao) {
 
     suspend fun fetchAthlete(): AthleteDto = api.getAthlete().toAthleteDto()
     suspend fun fetchWeekActivities(unixTimeStamp: Long): List<ActivityDto>? {
-        val res = safeApiCall {
-            api.getActivities(before = unixTimeStampToNextSundayMidnight(unixTimeStamp), after = unixTimeStampToPreviousMondayMorning(unixTimeStamp))
+        val before = unixTimeStampToNextSundayMidnight(unixTimeStamp)
+        val after = unixTimeStampToPreviousMondayMorning(unixTimeStamp)
+
+        val requiredDays = getDaysBetween(after, before)
+        val currentTime = System.currentTimeMillis()
+
+        // Check if all days in the range are cached and valid
+        cacheMutex.withLock {
+            val allDaysCached = requiredDays.all { day ->
+                val cached = activitiesCache[day]
+                cached != null && (currentTime - cached.timestamp) < cacheValidityDuration
+            }
+
+            if (allDaysCached) {
+                Timber.d("Returning cached activities for range (all ${requiredDays.size} days cached)")
+                // Collect all activities from cached days
+                return requiredDays.flatMap { day ->
+                    activitiesCache[day]?.activities ?: emptyList()
+                }
+            }
         }
+
+        // Cache miss or expired - fetch from API
+        Timber.d("Fetching activities from API (cache incomplete or expired for range)")
+        val res = safeApiCall {
+            api.getActivities(before = before, after = after)
+        }
+
         return when (res) {
             is StravaResult.Success -> {
-                res.data.map { it.toActivityDto() }
+                val activities = res.data.map { it.toActivityDto() }
+
+                // Update cache - store activities per day
+                cacheMutex.withLock {
+                    // Group activities by day
+                    val activitiesByDay = activities.groupBy { activity ->
+                        getStartOfDay(activity.startDateUnix ?: 0L)
+                    }
+
+                    // Cache each day in the requested range
+                    requiredDays.forEach { day ->
+                        val dayActivities = activitiesByDay[day] ?: emptyList()
+                        activitiesCache[day] = CachedDay(
+                            activities = dayActivities,
+                            timestamp = currentTime
+                        )
+                        Timber.d("Cached ${dayActivities.size} activities for day $day")
+                    }
+                }
+
+                activities
             }
             is StravaResult.Error -> {
                 null
             }
+        }
+    }
+
+    /**
+     * Clears the in-memory cache for activities
+     */
+    suspend fun clearActivitiesCache() {
+        cacheMutex.withLock {
+            activitiesCache.clear()
+            Timber.d("Activities cache cleared")
         }
     }
 
