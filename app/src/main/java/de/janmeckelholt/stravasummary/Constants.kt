@@ -1,5 +1,7 @@
 package de.janmeckelholt.stravasummary
 
+import androidx.compose.ui.unit.sp
+
 object Constants {
     const val STRAVA_BASE_URL  = "https://www.strava.com/"
     const val STRAVA_GRANT_TYPE_CODE = "authorization_code"
@@ -15,6 +17,7 @@ object Constants {
     const val STRAVA_DB_NAME = "strava_db"
     const val STRAVA_ATHLETE_TABLE_NAME = "strava_athlete_table"
     const val STRAVA_ACTIVITY_TABLE_NAME = "strava_activity_table"
+    val FONT_SIZE = 16.sp
 }
 
 enum class Steps{

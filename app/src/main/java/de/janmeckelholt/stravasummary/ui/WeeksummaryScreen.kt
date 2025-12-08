@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import de.janmeckelholt.stravasummary.Constants
 import de.janmeckelholt.stravasummary.ui.composables.DatePickerDocked
 import de.janmeckelholt.stravasummary.utils.formatMetersToKm
 import de.janmeckelholt.stravasummary.utils.formatSecondsToHMS
@@ -53,10 +54,10 @@ fun WeekSummaryScreen(vm: MainViewModel) {
                     }
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                Text(text = "Start of Week: ${unixTimeStampToDateString(weekSummary.startOfWeek)}", color = textColor, fontSize = 32.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
-                Text(text = "Number of Runs: ${weekSummary.numberOfRuns}", color = textColor, fontSize = 32.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
-                Text(text = "Distance: ${formatMetersToKm(weekSummary.totalDistance)}", color = textColor, fontSize = 32.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
-                Text(text = "Moving Time: ${formatSecondsToHMS(weekSummary.totalMovingTime)}", color = textColor, fontSize = 32.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Text(text = "Start of Week: ${unixTimeStampToDateString(weekSummary.startOfWeek)}", color = textColor, fontSize = Constants.FONT_SIZE, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Text(text = "Number of Runs: ${weekSummary.numberOfRuns}", color = textColor, fontSize = Constants.FONT_SIZE, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Text(text = "Distance: ${formatMetersToKm(weekSummary.totalDistance)}", color = textColor, fontSize = Constants.FONT_SIZE, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Text(text = "Moving Time: ${formatSecondsToHMS(weekSummary.totalMovingTime)}", color = textColor, fontSize = Constants.FONT_SIZE, modifier = Modifier.align(Alignment.CenterHorizontally))
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterHorizontally)
@@ -74,10 +75,10 @@ fun WeekSummaryScreen(vm: MainViewModel) {
                     Text(
                         text = "Elevation Gain: ${weekSummary.totalElevationGain}",
                         color = textColor,
-                        fontSize = 32.sp
+                        fontSize = Constants.FONT_SIZE
                     )
                 }
-                Text(text = "Number of Others: ${weekSummary.numberOfOthers}", color = textColor, fontSize = 32.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Text(text = "Number of Others: ${weekSummary.numberOfOthers}", color = textColor, fontSize = Constants.FONT_SIZE, modifier = Modifier.align(Alignment.CenterHorizontally))
                 Spacer(modifier = Modifier.weight(4f))
             }
             Spacer(modifier = Modifier.weight(2f))
