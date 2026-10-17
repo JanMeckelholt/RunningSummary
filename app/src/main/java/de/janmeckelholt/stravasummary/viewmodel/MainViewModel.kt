@@ -2,26 +2,20 @@ package de.janmeckelholt.stravasummary.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.janmeckelholt.stravasummary.Steps
-import de.janmeckelholt.stravasummary.data.StravaRepo
+import de.janmeckelholt.stravasummary.data.HealthConnectManager
+import de.janmeckelholt.stravasummary.data.HealthConnectRepo
 import de.janmeckelholt.stravasummary.data.database.models.ActivityDto
 import de.janmeckelholt.stravasummary.data.database.models.AthleteDto
 import de.janmeckelholt.stravasummary.data.models.WeekSummary
 import de.janmeckelholt.stravasummary.data.models.toWeekSummary
-import de.janmeckelholt.stravasummary.data.network.AuthManager
-import de.janmeckelholt.stravasummary.data.work.BackfillWorker
 import de.janmeckelholt.stravasummary.utils.unixTimeStampToDateString
 import de.janmeckelholt.stravasummary.utils.unixTimeStampToPreviousMondayMorning
 import jakarta.inject.Inject
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.map
@@ -31,9 +25,8 @@ import timber.log.Timber
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
-    private val repo: StravaRepo,
-    private val authManager: AuthManager,
-    private val workManager: WorkManager
+    private val repo: HealthConnectRepo,
+    private val healthConnectManager: HealthConnectManager
 ) : ViewModel() {
     private var _displayedDate = MutableStateFlow<Long>(unixTimeStampToPreviousMondayMorning(System.currentTimeMillis() / 1000))
     val displayedDate: StateFlow<Long> = _displayedDate.asStateFlow()
@@ -41,15 +34,11 @@ class MainViewModel @Inject constructor(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
-    private val _navigateToAuth = MutableSharedFlow<Unit>()
-    val navigateToAuth = _navigateToAuth.asSharedFlow()
-
     fun setDisplayedDate(epoch: Long) {
         _displayedDate.value = unixTimeStampToPreviousMondayMorning(epoch)
         fetchActivities()
         observeActivities()
     }
-
 
     val formattedDisplayedDate: StateFlow<String> = _displayedDate
         .map { epoch ->
@@ -64,7 +53,7 @@ class MainViewModel @Inject constructor(
                 .toString()
         )
 
-    private var _step = MutableStateFlow<Steps>(Steps.GET_CODE)
+    private var _step = MutableStateFlow<Steps>(Steps.INITIAL)
     val step: StateFlow<Steps> = _step.asStateFlow()
     fun setStep(newStep: Steps) {
         _step.value = newStep
@@ -94,122 +83,48 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    private var _athleteDto = MutableStateFlow<AthleteDto?>(null)
+    private var _athleteDto = MutableStateFlow<AthleteDto?>(
+        AthleteDto(
+            id = 1L,
+            username = "local",
+            firstName = "Local",
+            lastName = "User"
+        )
+    )
     val athleteDto: StateFlow<AthleteDto?> = _athleteDto.asStateFlow()
 
     fun fetchActivities() {
         viewModelScope.launch {
-            val token = authManager.getAccessToken()
-            if (token.isNullOrEmpty()) {
-                Timber.e("No Strava token provided")
-                _step.value = Steps.GET_CODE
-                return@launch
+            try {
+                if (healthConnectManager.hasAllPermissions()) {
+                    val activities = repo.fetchWeekActivities(unixTimeStamp = _displayedDate.value)
+                    repo.insertAllActivities(*activities.toTypedArray())
+                    _step.value = Steps.SHOW_WEEK_SUMMARY
+                    observeActivities()
+                } else {
+                    _errorMessage.value = "Health Connect Permissions missing"
+                    _step.value = Steps.GET_CODE // Repurpose GET_CODE step for permissions
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "Error fetching activities")
+                _errorMessage.value = "Failed to read Health Connect"
             }
-            val activities = repo.fetchWeekActivities(unixTimeStamp = _displayedDate.value)
-            activities?.let { acts ->
-                repo.insertAllActivities(*acts.toTypedArray())
-            }
-            _step.value = Steps.SHOW_WEEK_SUMMARY
-            observeActivities()
         }
     }
 
     fun refreshActivities() {
         viewModelScope.launch {
-            // Clear the cache to force a fresh fetch from remote
             repo.clearActivitiesCache()
-            Timber.i("Cache cleared, fetching fresh activities from remote")
             fetchActivities()
         }
     }
 
-    fun saveCodeAndResume(code: String) {
+    fun checkPermissionsAndFetch() {
         viewModelScope.launch {
-            authManager.updateCode(code)
-            resumeAuthFlow()
-        }
-    }
-
-    init {
-        resumeAuthFlow()
-    }
-
-    fun resumeAuthFlow() {
-        _step.value = Steps.INITIAL
-        viewModelScope.launch {
-            authManager.initialize()
-            val token = authManager.getAccessToken()
-            
-            if (!token.isNullOrEmpty()) {
-                Timber.i("Have valid access token. Proceeding...")
-                
-                // Enqueue backfill worker in the background
-                val backfillWorkRequest = OneTimeWorkRequestBuilder<BackfillWorker>().build()
-                workManager.enqueueUniqueWork(
-                    "strava_backfill",
-                    ExistingWorkPolicy.KEEP,
-                    backfillWorkRequest
-                )
-
-                val storedAthlete = repo.getAthlete(authManager.athleteId ?: -1)
-                if (storedAthlete != null) {
-                    Timber.i("Using saved Strava athlete from DataStore: ${storedAthlete.firstName} ${storedAthlete.lastName}")
-                    _athleteDto.value = storedAthlete
-                    fetchActivities()
-                } else {
-                    Timber.i("Fetching athlete...")
-                    fetchAthlete()
-                }
-            } else {
-                Timber.i("No Strava token available. Need to get code...")
-                _step.value = Steps.GET_CODE
-            }
-        }
-    }
-
-    fun getStravaCode() {
-        _step.value = Steps.GET_CODE
-        viewModelScope.launch {
-            val storedCode = authManager.code
-            if (!storedCode.isNullOrEmpty()) {
-                Timber.i("Using saved Strava code from DataStore: $storedCode")
-                // Code is already there, let's try getting token
-                resumeAuthFlow()
-                return@launch
-            }
-            _navigateToAuth.emit(Unit)
-        }
-    }
-
-    fun fetchAthlete() {
-        _step.value = Steps.GET_ATHLETE
-        viewModelScope.launch {
-            val token = authManager.getAccessToken()
-            if (token.isNullOrEmpty()) {
-                Timber.e("No Strava token provided")
-                _step.value = Steps.GET_CODE
-                return@launch
-            }
-            
-            try {
-                val athleteDto = repo.fetchAthlete()
-                _athleteDto.value = athleteDto
-                authManager.updateAthleteId(athleteDto.id)
-                repo.insertAllAthletes(athleteDto)
+            if (healthConnectManager.hasAllPermissions()) {
                 fetchActivities()
-            } catch (e: Exception) {
-                if (e is retrofit2.HttpException && e.code() == 403) {
-                    Timber.e(
-                        e,
-                        "403 Forbidden. Auth token might be revoked or lacking scopes. Clearing auth data..."
-                    )
-                    authManager.clearAuthData()
-                    _errorMessage.value =
-                        "Strava API access is now subscriber-only. Start a subscription to maintain your access."
-                } else {
-                    Timber.e(e, "Error fetching athlete")
-                }
-                _step.value = Steps.GET_CODE
+            } else {
+                _step.value = Steps.GET_CODE // We use GET_CODE for GET_PERMISSIONS on UI side
             }
         }
     }

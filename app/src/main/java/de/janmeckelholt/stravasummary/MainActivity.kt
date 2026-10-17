@@ -1,6 +1,5 @@
 package de.janmeckelholt.stravasummary
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,16 +10,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import de.janmeckelholt.stravasummary.data.HealthConnectManager
 import de.janmeckelholt.stravasummary.theme.RunningTheme
-import de.janmeckelholt.stravasummary.ui.LoadingScreen
 import de.janmeckelholt.stravasummary.ui.PreparationScreen
 import de.janmeckelholt.stravasummary.ui.WeekSummaryScreen
 import de.janmeckelholt.stravasummary.viewmodel.MainViewModel
+import jakarta.inject.Inject
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -28,56 +31,67 @@ import timber.log.Timber
 class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels()
 
+    @Inject
+    lateinit var healthConnectManager: HealthConnectManager
+
+    private val requestPermissions = registerForActivityResult(
+        PermissionController.createRequestPermissionResultContract()
+    ) { granted ->
+        Timber.i("Health Connect permission result granted: $granted")
+        Timber.i("Required permissions: ${healthConnectManager.permissions}")
+        if (granted.containsAll(healthConnectManager.permissions)) {
+            mainViewModel.fetchActivities()
+        } else {
+            Timber.e("Health Connect permissions denied. Granted: $granted, Needed: ${healthConnectManager.permissions}")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        intent?.let { intent ->
-            intent.extras?.getString("code")?.let {
-                val code = it
-                Timber.i("Received code: $code")
-                mainViewModel.saveCodeAndResume(code)
-            }
-        }
+        
         enableEdgeToEdge()
         setContent {
             RunningTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     Box(modifier = Modifier.padding(innerPadding)) {
-                        MainScreen(vm = mainViewModel)
+                        MainScreen(
+                            vm = mainViewModel,
+                            onRequestPermissions = {
+                                val status = healthConnectManager.getSdkStatus()
+                                Timber.i("HealthConnect SDK Status: $status (AVAILABLE=${HealthConnectClient.SDK_AVAILABLE})")
+                                requestPermissions.launch(healthConnectManager.permissions)
+                            }
+                        )
                     }
                 }
             }
         }
 
         lifecycleScope.launch {
-            mainViewModel.navigateToAuth.collect {
-                try {
-                    val authIntent = Intent(this@MainActivity, AuthActivity::class.java)
-                    startActivity(authIntent)
-                } catch (e: Exception) {
-                    Timber.e(e)
-                }
+            if (healthConnectManager.hasAllPermissions()) {
+                mainViewModel.fetchActivities()
             }
         }
     }
 }
 
 @Composable
-fun MainScreen(vm: MainViewModel) {
+fun MainScreen(vm: MainViewModel, onRequestPermissions: () -> Unit) {
     val step by vm.step.collectAsStateWithLifecycle()
-    when (step) {
-        Steps.INITIAL -> LoadingScreen()
-        Steps.GET_CODE, Steps.GET_TOKEN, Steps.GET_ATHLETE, Steps.GET_ACTIVITIES -> PreparationScreen(vm)
-        Steps.SHOW_WEEK_SUMMARY -> {
-            vm.fetchActivities()
-            WeekSummaryScreen(vm)
+
+    LaunchedEffect(step) {
+        if (step == Steps.GET_CODE) { // We hijacked GET_CODE for asking permissions
+            onRequestPermissions()
+            vm.setStep(Steps.GET_TOKEN) // Move to loading step so we don't endlessly launch intent
         }
     }
 
+    when (step) {
+        Steps.INITIAL, Steps.GET_CODE, Steps.GET_TOKEN, Steps.GET_ATHLETE, Steps.GET_ACTIVITIES -> {
+            PreparationScreen(vm)
+        }
+        Steps.SHOW_WEEK_SUMMARY -> {
+            WeekSummaryScreen(vm)
+        }
+    }
 }
-
-
-
-
-
-

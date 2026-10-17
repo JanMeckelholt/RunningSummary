@@ -66,7 +66,7 @@ fun WeekSummaryScreen(vm: MainViewModel) {
             IconButton(onClick = { vm.refreshActivities() }) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
-                    contentDescription = "Refresh activities from remote",
+                    contentDescription = "Refresh activities from Health Connect",
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -89,12 +89,12 @@ fun WeekSummaryScreen(vm: MainViewModel) {
                     value = unixTimeStampToDateString(weekSummary.startOfWeek)
                 )
                 HorizontalDivider()
-                SummaryRow(label = "Runs", value = weekSummary.numberOfRuns.toString())
+                SummaryRow(label = "Sessions", value = weekSummary.numberOfRuns.toString())
                 HorizontalDivider()
                 SummaryRow(label = "Distance", value = formatMetersToKm(weekSummary.totalDistance))
                 HorizontalDivider()
                 SummaryRow(
-                    label = "Moving Time",
+                    label = "Duration",
                     value = formatSecondsToHMS(weekSummary.totalMovingTime)
                 )
                 HorizontalDivider()

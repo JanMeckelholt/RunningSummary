@@ -12,7 +12,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class ActivityDto(
     @PrimaryKey
-    val id: Long,
+    val id: String,
     val athleteId: Long?,
     val name: String?,
     val distance: Double?,

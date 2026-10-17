@@ -1,0 +1,12 @@
+## Goal
+
+Refactor the app to read activities from Google Health Connect locally on the device instead of using the Strava REST API, since the Strava API is no longer free.
+
+## Plan
+
+1.  **Add Health Connect Dependencies**: Add `androidx.health.connect:connect-client` to `build.gradle.kts`.
+2.  **Update Manifest**: Add necessary Health Connect permissions (`READ_EXERCISE_ROUTE`, `READ_EXERCISE`) and the `ACTION_SHOW_PERMISSIONS_RATIONALE` intent filter.
+3.  **Refactor Auth/Permissions**: Replace Strava web OAuth (`AuthActivity`, `AuthManager`, token preferences) with Health Connect permission checks and request flow.
+4.  **Refactor Data Layer**: Create a `HealthConnectRepo` (or update `StravaRepo`) to read `ExerciseSessionRecord` and associated `DistanceRecord` from Health Connect instead of Retrofit API calls.
+5.  **Map Data**: Map the Health Connect records to the existing `ActivityDto` to preserve the `WeekSummary` logic and UI.
+6.  **Cleanup**: Remove unused Strava network classes, constants, Retrofit setup, and the backfill worker (which relied on API pagination).

@@ -9,7 +9,7 @@ import de.janmeckelholt.stravasummary.data.database.models.ActivityDto
 import de.janmeckelholt.stravasummary.data.database.models.AthleteDto
 import kotlinx.coroutines.sync.Mutex
 
-@Database(entities = [AthleteDto::class, ActivityDto::class], version = 1, exportSchema = false)
+@Database(entities = [AthleteDto::class, ActivityDto::class], version = 2, exportSchema = false)
 abstract class StravaDatabase: RoomDatabase() {
     abstract val stravaDao: StravaDao
     val mutex = Mutex()
@@ -24,7 +24,7 @@ abstract class StravaDatabase: RoomDatabase() {
                         context.applicationContext,
                         StravaDatabase::class.java,
                         Constants.STRAVA_DB_NAME
-                    ).fallbackToDestructiveMigration(false).build()
+                    ).fallbackToDestructiveMigration(true).build()
 
                     INSTANCE = instance
                 }

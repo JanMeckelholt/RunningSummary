@@ -24,7 +24,6 @@ import de.janmeckelholt.stravasummary.viewmodel.MainViewModel
 
 @Composable
 fun PreparationScreen(vm: MainViewModel) {
-    val athleteDto by vm.athleteDto.collectAsStateWithLifecycle()
     val step by vm.step.collectAsStateWithLifecycle()
     val errorMessage by vm.errorMessage.collectAsStateWithLifecycle()
 
@@ -43,18 +42,11 @@ fun PreparationScreen(vm: MainViewModel) {
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
-                    text = "Strava Summary",
+                    text = "Weekly Summary",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
-
-                if (athleteDto != null) {
-                    Text(
-                        text = "Hello, ${athleteDto?.firstName}!",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                }
 
                 when (step) {
                     Steps.GET_CODE -> {
@@ -68,17 +60,17 @@ fun PreparationScreen(vm: MainViewModel) {
                             )
                         } else {
                             Text(
-                                text = "Connect your account to see your weekly summaries.",
+                                text = "Connect your account to see your weekly summaries from Health Connect.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.padding(bottom = 16.dp),
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                         }
                         Button(
-                            onClick = { vm.getStravaCode() },
+                            onClick = { vm.checkPermissionsAndFetch() },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(text = "Connect with Strava")
+                            Text(text = "Connect with Health Connect")
                         }
                     }
                     Steps.GET_TOKEN, Steps.GET_ATHLETE, Steps.GET_ACTIVITIES -> {
@@ -89,7 +81,14 @@ fun PreparationScreen(vm: MainViewModel) {
                         )
                     }
                     Steps.SHOW_WEEK_SUMMARY -> {}
-                    Steps.INITIAL -> {}
+                    Steps.INITIAL -> {
+                        Button(
+                            onClick = { vm.checkPermissionsAndFetch() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(text = "Start")
+                        }
+                    }
                 }
             }
         }
