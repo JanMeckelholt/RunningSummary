@@ -21,16 +21,15 @@ class HttpResponseInterceptor(
         Timber.i("___response code: ${response.code} - ${response.peekBody(10000).string()}")
         while (!response.isSuccessful && retryCount < maxRetryCount) {
             retryCount++
-            var newRequest = handleExpectedFailures(response, originReq)
+            val newRequest = handleExpectedFailures(response, originReq)
             if (newRequest == null) {
                 unhandledError = true
-                newRequest = originReq
+                break // Don't blindly retry if we don't know how to handle the error (e.g. 429)
             }
             Timber.w("HttpResponseInterceptor: Error ${response.code} - ${response.peekBody(10000).string()}")
             response.close()
             Timber.w("retrying request: $newRequest - ${retryCount.ordinal()} retry")
             response = chain.proceed(newRequest)
-
         }
         if ((!response.isSuccessful && retryCount >= maxRetryCount) || unhandledError == true) {
             Timber.e("Request ${originReq.url} failed. Retry count: $retryCount - ${unhandledError?.let { "unhandled Error" }}")

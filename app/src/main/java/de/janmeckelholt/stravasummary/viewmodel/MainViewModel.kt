@@ -2,6 +2,9 @@ package de.janmeckelholt.stravasummary.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.janmeckelholt.stravasummary.Steps
 import de.janmeckelholt.stravasummary.data.StravaRepo
@@ -14,9 +17,6 @@ import de.janmeckelholt.stravasummary.data.work.BackfillWorker
 import de.janmeckelholt.stravasummary.utils.unixTimeStampToDateString
 import de.janmeckelholt.stravasummary.utils.unixTimeStampToPreviousMondayMorning
 import jakarta.inject.Inject
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -37,6 +37,9 @@ class MainViewModel @Inject constructor(
 ) : ViewModel() {
     private var _displayedDate = MutableStateFlow<Long>(unixTimeStampToPreviousMondayMorning(System.currentTimeMillis() / 1000))
     val displayedDate: StateFlow<Long> = _displayedDate.asStateFlow()
+
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
     private val _navigateToAuth = MutableSharedFlow<Unit>()
     val navigateToAuth = _navigateToAuth.asSharedFlow()
@@ -195,7 +198,17 @@ class MainViewModel @Inject constructor(
                 repo.insertAllAthletes(athleteDto)
                 fetchActivities()
             } catch (e: Exception) {
-                Timber.e(e, "Error fetching athlete")
+                if (e is retrofit2.HttpException && e.code() == 403) {
+                    Timber.e(
+                        e,
+                        "403 Forbidden. Auth token might be revoked or lacking scopes. Clearing auth data..."
+                    )
+                    authManager.clearAuthData()
+                    _errorMessage.value =
+                        "Strava API access is now subscriber-only. Start a subscription to maintain your access."
+                } else {
+                    Timber.e(e, "Error fetching athlete")
+                }
                 _step.value = Steps.GET_CODE
             }
         }

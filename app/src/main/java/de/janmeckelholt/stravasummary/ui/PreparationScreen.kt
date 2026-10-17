@@ -26,6 +26,7 @@ import de.janmeckelholt.stravasummary.viewmodel.MainViewModel
 fun PreparationScreen(vm: MainViewModel) {
     val athleteDto by vm.athleteDto.collectAsStateWithLifecycle()
     val step by vm.step.collectAsStateWithLifecycle()
+    val errorMessage by vm.errorMessage.collectAsStateWithLifecycle()
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Card(
@@ -57,12 +58,22 @@ fun PreparationScreen(vm: MainViewModel) {
 
                 when (step) {
                     Steps.GET_CODE -> {
-                        Text(
-                            text = "Connect your account to see your weekly summaries.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(bottom = 16.dp),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
+                        if (errorMessage != null) {
+                            Text(
+                                text = errorMessage!!,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(bottom = 16.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        } else {
+                            Text(
+                                text = "Connect your account to see your weekly summaries.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(bottom = 16.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
                         Button(
                             onClick = { vm.getStravaCode() },
                             modifier = Modifier.fillMaxWidth()

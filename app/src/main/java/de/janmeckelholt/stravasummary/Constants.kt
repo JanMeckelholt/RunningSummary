@@ -17,6 +17,8 @@ object Constants {
     const val STRAVA_DB_NAME = "strava_db"
     const val STRAVA_ATHLETE_TABLE_NAME = "strava_athlete_table"
     const val STRAVA_ACTIVITY_TABLE_NAME = "strava_activity_table"
+    const val OLDEST_SYNCED_TIMESTAMP_KEY = "oldestSyncedTimestampKey"
+    const val BACKFILL_COMPLETED_KEY = "backfillCompletedKey"
     val FONT_SIZE = 16.sp
 }
 

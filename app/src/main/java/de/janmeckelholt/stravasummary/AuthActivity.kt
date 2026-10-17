@@ -5,11 +5,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
-import timber.log.Timber
 import androidx.core.net.toUri
+import dagger.hilt.android.AndroidEntryPoint
 import de.janmeckelholt.stravasummary.viewmodel.AuthViewModel
-import kotlin.getValue
+import timber.log.Timber
 
+@AndroidEntryPoint
 class AuthActivity : ComponentActivity() {
     private val authViewModel: AuthViewModel by viewModels()
 

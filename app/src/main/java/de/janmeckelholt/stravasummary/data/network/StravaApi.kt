@@ -30,4 +30,10 @@ interface StravaApi {
         @Query("before") before: Long,
         @Query("after") after: Long
     ): List<StravaActivity>
+
+    @GET("api/v3/athlete/activities")
+    suspend fun getActivitiesBefore(
+        @Query("before") before: Long,
+        @Query("per_page") perPage: Int = 200
+    ): retrofit2.Response<List<StravaActivity>>
 }
