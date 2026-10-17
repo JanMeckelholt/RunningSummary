@@ -2,6 +2,10 @@ package de.janmeckelholt.stravasummary.theme
 
 import androidx.compose.ui.graphics.Color
 
+val StravaOrange = Color(0xFFFC4C02)
+val StravaOrangeDark = Color(0xFFE34402)
+val StravaOrangeLight = Color(0xFFFF7A40)
+
 val Purple80 = Color(0xFFD0BCFF)
 val PurpleGrey80 = Color(0xFFCCC2DC)
 val Pink80 = Color(0xFFEFB8C8)
