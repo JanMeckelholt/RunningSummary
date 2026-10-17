@@ -15,13 +15,13 @@ plugins {
 }
 
 android {
-    namespace = "de.janmeckelholt.stravasummary"
+    namespace = "de.janmeckelholt.runningsummary"
     compileSdk = 36
 
     defaultConfig {
         val stravaClientId = dotenv.get("STRAVA_CLIENT_ID", "ab")
         val stravaClientSecret = dotenv.get("STRAVA_CLIENT_SECRET", "cd")
-        applicationId = "de.janmeckelholt.stravasummary"
+        applicationId = "de.janmeckelholt.runningsummary"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
