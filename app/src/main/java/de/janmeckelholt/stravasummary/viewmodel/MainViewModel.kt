@@ -89,6 +89,7 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
             val token = Credentials.updateAccessToken()
             if (token.isNullOrEmpty()) {
                 Timber.e("No Strava token provided")
+                _step.value = Steps.GET_CODE
                 return@launch
             }
             val activities = repo.fetchWeekActivities(unixTimeStamp = _displayedDate.value)
@@ -110,24 +111,29 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
     }
 
     init {
+        resumeAuthFlow()
+    }
+
+    fun resumeAuthFlow() {
+        _step.value = Steps.INITIAL
         viewModelScope.launch {
             Credentials.initialize(stravaRepo = repo)
-            _step.value = if (!Credentials.code.isNullOrEmpty()) {
-                Timber.i("Using saved Strava code from DataStore: ${Credentials.code}")
-                if (!Credentials.accessToken.isNullOrEmpty()) {
-                    Timber.i("Using saved Strava accessToken from DataStore: ${Credentials.accessToken}")
-
-                    val storedAthlete = repo.getAthlete(Credentials.athleteId ?: -1)
-                    if (storedAthlete != null) {
-                        Timber.i("Using saved Strava athlete from DataStore: ${storedAthlete.firstName} ${storedAthlete.lastName}")
-                        _athleteDto.value = storedAthlete
-                        _weekActivities.value = repo.getWeekActivities(displayedDate.value) ?: emptyList()
-                        Steps.SHOW_WEEK_SUMMARY
-                    } else Steps.GET_ATHLETE
-                } else Steps.GET_TOKEN
+            val token = Credentials.updateAccessToken()
+            
+            if (!token.isNullOrEmpty()) {
+                Timber.i("Have valid access token. Proceeding...")
+                val storedAthlete = repo.getAthlete(Credentials.athleteId ?: -1)
+                if (storedAthlete != null) {
+                    Timber.i("Using saved Strava athlete from DataStore: ${storedAthlete.firstName} ${storedAthlete.lastName}")
+                    _athleteDto.value = storedAthlete
+                    fetchActivities()
+                } else {
+                    Timber.i("Fetching athlete...")
+                    fetchAthlete()
+                }
             } else {
-                Timber.i("No Strava code saved. Getting new one...")
-                Steps.GET_CODE
+                Timber.i("No Strava token available. Need to get code...")
+                _step.value = Steps.GET_CODE
             }
         }
     }
@@ -138,41 +144,39 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
             val storedCode = Credentials.code
             if (!storedCode.isNullOrEmpty()) {
                 Timber.i("Using saved Strava code from DataStore: $storedCode")
+                // Code is already there, let's try getting token
+                resumeAuthFlow()
                 return@launch
             }
             try {
                 val intent = Intent(ctx, AuthActivity::class.java)
                 ctx.startActivity(intent)
-
             } catch (e: Exception) {
                 Timber.e(e.localizedMessage)
             }
         }
     }
 
-    fun getAccessToken() {
-        _step.value = Steps.GET_TOKEN
-        viewModelScope.launch {
-            val t = Credentials.updateAccessToken()
-            Timber.i("Access token: $t")
-            _step.value = Steps.GET_ATHLETE
-        }
-    }
-
     fun fetchAthlete() {
         _step.value = Steps.GET_ATHLETE
-        val token = Credentials.updateAccessToken()
-        if (token.isNullOrEmpty()) {
-            Timber.e("No Strava token provided")
-            return
-        }
         viewModelScope.launch {
-            val athleteDto = repo.fetchAthlete()
-            _athleteDto.value = athleteDto
-            Credentials.updateAthleteId(athleteDto.id)
-            repo.insertAllAthletes(athleteDto)
-            Credentials
-            _step.value = Steps.GET_ACTIVITIES
+            val token = Credentials.updateAccessToken()
+            if (token.isNullOrEmpty()) {
+                Timber.e("No Strava token provided")
+                _step.value = Steps.GET_CODE
+                return@launch
+            }
+            
+            try {
+                val athleteDto = repo.fetchAthlete()
+                _athleteDto.value = athleteDto
+                Credentials.updateAthleteId(athleteDto.id)
+                repo.insertAllAthletes(athleteDto)
+                fetchActivities()
+            } catch (e: Exception) {
+                Timber.e(e, "Error fetching athlete")
+                _step.value = Steps.GET_CODE
+            }
         }
     }
 }

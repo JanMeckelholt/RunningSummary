@@ -1,6 +1,6 @@
 import io.github.cdimascio.dotenv.dotenv
 val dotenv = dotenv {
-    ignoreIfMissing = false
+    ignoreIfMissing = true
     directory = rootProject.buildFile.parentFile.absolutePath
 }
 
@@ -19,7 +19,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        val stravaClientId = dotenv.get("STRAVA_ClIENT_ID", "ab")
+        val stravaClientId = dotenv.get("STRAVA_CLIENT_ID", "ab")
         val stravaClientSecret = dotenv.get("STRAVA_CLIENT_SECRET", "cd")
         applicationId = "de.janmeckelholt.stravasummary"
         minSdk = 26

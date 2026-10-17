@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
                 val code = it
                 Timber.i("Received code: $code")
                 Credentials.updateCode(code)
-                mainViewModel.setStep(Steps.GET_TOKEN)
+                mainViewModel.resumeAuthFlow()
             }
         }
         enableEdgeToEdge()

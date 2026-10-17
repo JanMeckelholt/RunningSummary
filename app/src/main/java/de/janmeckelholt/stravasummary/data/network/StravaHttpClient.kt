@@ -21,9 +21,9 @@ class StravaHttpClient : OkHttpClient() {
                         runBlocking {
                             PreferencesDataStore(TimberApplication.appContext).saveString(key = Constants.STRAVA_ACCESS_TOKEN_KEY, value = "")
                             Credentials.refreshAccessToken(reset = true)
+                            // Return request with new ctxDa-token
+                            return@runBlocking originalRequest.newBuilder().header("Authorization", "Bearer ${Credentials.updateAccessToken() ?: ""}").build()
                         }
-                        // Return reqeust with new ctxDa-token
-                        return@HttpResponseInterceptor originalRequest.newBuilder().header("Authorization", "Bearer ${Credentials.updateAccessToken() ?: ""}").build()
                     }
                     else -> {
                         Timber.w("Unexpected response code ${response.code} from StravaHttpClient")

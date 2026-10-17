@@ -46,11 +46,9 @@ object Credentials {
         }
     }
 
-    fun updateAccessToken(): String? {
-        runBlocking {
-            withContext(Dispatchers.IO) {
-                if (accessToken.isNullOrEmpty()) refreshAccessToken()
-            }
+    suspend fun updateAccessToken(): String? {
+        withContext(Dispatchers.IO) {
+            if (accessToken.isNullOrEmpty()) refreshAccessToken()
         }
         return accessToken
     }
@@ -69,9 +67,16 @@ object Credentials {
                 if (!refreshToken.isNullOrEmpty()) {
                     // get token with refresh token
                     Timber.i("using refresh token $refreshToken to get new token...")
-                    val tokenResponse = repo?.refreshToken(refreshToken = refreshToken!!)
-                    accessToken = tokenResponse?.access_token
-                    refreshToken = tokenResponse?.refresh_token
+                    try {
+                        val tokenResponse = repo?.refreshToken(refreshToken = refreshToken!!)
+                        accessToken = tokenResponse?.access_token
+                        refreshToken = tokenResponse?.refresh_token
+                    } catch (e: Exception) {
+                        Timber.e(e, "Failed to refresh token with refresh_token")
+                        refreshToken = null
+                        PreferencesDataStore(TimberApplication.appContext).saveString(Constants.STRAVA_REFRESH_TOKEN_KEY, "")
+                        return@withContext
+                    }
                 } else {
                     // get token with code
                     if (code.isNullOrEmpty()) {
@@ -80,16 +85,23 @@ object Credentials {
                     }
                     Timber.i("using code $code to get new token...(repo $repo)")
 
-                    val tokenResponse = repo?.getTokenWithCode(code = code!!)
-                    if (tokenResponse == null) {
-                        Timber.e("No token response for code: $code. Resetting code...")
+                    try {
+                        val tokenResponse = repo?.getTokenWithCode(code = code!!)
+                        if (tokenResponse == null) {
+                            Timber.e("No token response for code: $code. Resetting code...")
+                            PreferencesDataStore(TimberApplication.appContext).saveString(Constants.STRAVA_CODE_KEY, "")
+                            code = null
+                            return@withContext
+                        }
+                        Timber.i("___tokenResponse: $tokenResponse")
+                        accessToken = tokenResponse.access_token
+                        refreshToken = tokenResponse.refresh_token
+                    } catch (e: Exception) {
+                        Timber.e(e, "Failed to get token with code. Resetting code...")
                         PreferencesDataStore(TimberApplication.appContext).saveString(Constants.STRAVA_CODE_KEY, "")
                         code = null
                         return@withContext
                     }
-                    Timber.i("___tokenResponse: $tokenResponse")
-                    accessToken = tokenResponse.access_token
-                    refreshToken = tokenResponse.refresh_token
                 }
             }
             PreferencesDataStore(TimberApplication.appContext).saveString(key = Constants.STRAVA_ACCESS_TOKEN_KEY, value = accessToken ?: "")
