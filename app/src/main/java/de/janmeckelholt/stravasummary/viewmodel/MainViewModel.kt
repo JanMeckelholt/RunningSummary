@@ -1,24 +1,27 @@
 package de.janmeckelholt.stravasummary.viewmodel
 
-import android.content.Context
-import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import de.janmeckelholt.stravasummary.AuthActivity
-import de.janmeckelholt.stravasummary.data.StravaRepo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.janmeckelholt.stravasummary.Steps
+import de.janmeckelholt.stravasummary.data.StravaRepo
 import de.janmeckelholt.stravasummary.data.database.models.ActivityDto
 import de.janmeckelholt.stravasummary.data.database.models.AthleteDto
 import de.janmeckelholt.stravasummary.data.models.WeekSummary
 import de.janmeckelholt.stravasummary.data.models.toWeekSummary
-import de.janmeckelholt.stravasummary.data.network.Credentials
+import de.janmeckelholt.stravasummary.data.network.AuthManager
+import de.janmeckelholt.stravasummary.data.work.BackfillWorker
 import de.janmeckelholt.stravasummary.utils.unixTimeStampToDateString
 import de.janmeckelholt.stravasummary.utils.unixTimeStampToPreviousMondayMorning
 import jakarta.inject.Inject
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.map
@@ -27,9 +30,16 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 @HiltViewModel
-class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewModel() {
+class MainViewModel @Inject constructor(
+    private val repo: StravaRepo,
+    private val authManager: AuthManager,
+    private val workManager: WorkManager
+) : ViewModel() {
     private var _displayedDate = MutableStateFlow<Long>(unixTimeStampToPreviousMondayMorning(System.currentTimeMillis() / 1000))
     val displayedDate: StateFlow<Long> = _displayedDate.asStateFlow()
+
+    private val _navigateToAuth = MutableSharedFlow<Unit>()
+    val navigateToAuth = _navigateToAuth.asSharedFlow()
 
     fun setDisplayedDate(epoch: Long) {
         _displayedDate.value = unixTimeStampToPreviousMondayMorning(epoch)
@@ -86,7 +96,7 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
 
     fun fetchActivities() {
         viewModelScope.launch {
-            val token = Credentials.updateAccessToken()
+            val token = authManager.getAccessToken()
             if (token.isNullOrEmpty()) {
                 Timber.e("No Strava token provided")
                 _step.value = Steps.GET_CODE
@@ -110,6 +120,13 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
         }
     }
 
+    fun saveCodeAndResume(code: String) {
+        viewModelScope.launch {
+            authManager.updateCode(code)
+            resumeAuthFlow()
+        }
+    }
+
     init {
         resumeAuthFlow()
     }
@@ -117,12 +134,21 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
     fun resumeAuthFlow() {
         _step.value = Steps.INITIAL
         viewModelScope.launch {
-            Credentials.initialize(stravaRepo = repo)
-            val token = Credentials.updateAccessToken()
+            authManager.initialize()
+            val token = authManager.getAccessToken()
             
             if (!token.isNullOrEmpty()) {
                 Timber.i("Have valid access token. Proceeding...")
-                val storedAthlete = repo.getAthlete(Credentials.athleteId ?: -1)
+                
+                // Enqueue backfill worker in the background
+                val backfillWorkRequest = OneTimeWorkRequestBuilder<BackfillWorker>().build()
+                workManager.enqueueUniqueWork(
+                    "strava_backfill",
+                    ExistingWorkPolicy.KEEP,
+                    backfillWorkRequest
+                )
+
+                val storedAthlete = repo.getAthlete(authManager.athleteId ?: -1)
                 if (storedAthlete != null) {
                     Timber.i("Using saved Strava athlete from DataStore: ${storedAthlete.firstName} ${storedAthlete.lastName}")
                     _athleteDto.value = storedAthlete
@@ -138,29 +164,24 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
         }
     }
 
-    fun getStravaCode(ctx: Context) {
+    fun getStravaCode() {
         _step.value = Steps.GET_CODE
         viewModelScope.launch {
-            val storedCode = Credentials.code
+            val storedCode = authManager.code
             if (!storedCode.isNullOrEmpty()) {
                 Timber.i("Using saved Strava code from DataStore: $storedCode")
                 // Code is already there, let's try getting token
                 resumeAuthFlow()
                 return@launch
             }
-            try {
-                val intent = Intent(ctx, AuthActivity::class.java)
-                ctx.startActivity(intent)
-            } catch (e: Exception) {
-                Timber.e(e.localizedMessage)
-            }
+            _navigateToAuth.emit(Unit)
         }
     }
 
     fun fetchAthlete() {
         _step.value = Steps.GET_ATHLETE
         viewModelScope.launch {
-            val token = Credentials.updateAccessToken()
+            val token = authManager.getAccessToken()
             if (token.isNullOrEmpty()) {
                 Timber.e("No Strava token provided")
                 _step.value = Steps.GET_CODE
@@ -170,7 +191,7 @@ class MainViewModel @Inject constructor(private val repo: StravaRepo) : ViewMode
             try {
                 val athleteDto = repo.fetchAthlete()
                 _athleteDto.value = athleteDto
-                Credentials.updateAthleteId(athleteDto.id)
+                authManager.updateAthleteId(athleteDto.id)
                 repo.insertAllAthletes(athleteDto)
                 fetchActivities()
             } catch (e: Exception) {

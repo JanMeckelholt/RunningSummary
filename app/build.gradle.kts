@@ -75,10 +75,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.coil.compose)
     implementation(libs.retrofit2.kotlinx.serialization.converter)
-    implementation(libs.retrofit2.kotlin.coroutines.adapter)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.ktor.client.core)
-    implementation(libs.ktor.client.okhttp)
     implementation(libs.logging.interceptor)
 
     implementation(libs.hilt.android)
@@ -92,6 +89,10 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     //noinspection KaptUsageInsteadOfKsp
     kapt(libs.androidx.room.compiler)
+
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.hilt:hilt-work:1.2.0")
+    kapt("androidx.hilt:hilt-compiler:1.2.0")
 
 
     testImplementation(libs.junit)

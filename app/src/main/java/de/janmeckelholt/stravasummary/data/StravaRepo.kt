@@ -33,10 +33,14 @@ class StravaRepo(private val api: StravaApi, private val dao: StravaDao) {
     private val cacheValidityDuration = 60 * 60 * 1000L // 1 hour in milliseconds
 
     /**
-     * Gets the start of day (midnight) for a given unix timestamp
+     * Gets the start of day (midnight) for a given unix timestamp using timezone.
      */
     private fun getStartOfDay(unixTimestamp: Long): Long {
-        return (unixTimestamp / 86400) * 86400 // 86400 seconds in a day
+        val zone = java.time.ZoneId.of("Europe/Berlin")
+        val dateTime = java.time.Instant.ofEpochSecond(unixTimestamp).atZone(zone)
+        return dateTime
+            .with(java.time.LocalTime.MIDNIGHT)
+            .toEpochSecond()
     }
 
     /**
@@ -133,6 +137,29 @@ class StravaRepo(private val api: StravaApi, private val dao: StravaDao) {
             is StravaResult.Error -> {
                 null
             }
+        }
+    }
+
+    suspend fun fetchBackfillActivities(before: Long): StravaResult<List<ActivityDto>> {
+        Timber.d("Backfilling activities before $before")
+        val res = safeApiCall {
+            val response = api.getActivitiesBefore(before = before, perPage = 200)
+            if (response.isSuccessful) {
+                response.body() ?: emptyList()
+            } else {
+                throw retrofit2.HttpException(response)
+            }
+        }
+
+        return when (res) {
+            is StravaResult.Success -> {
+                val dtos = res.data.map { it.toActivityDto() }
+                if (dtos.isNotEmpty()) {
+                    insertAllActivities(*dtos.toTypedArray())
+                }
+                StravaResult.Success(dtos)
+            }
+            is StravaResult.Error -> res
         }
     }
 

@@ -16,7 +16,7 @@ fun Int.ordinal() = "$this" + when {
 }
 
 fun unixTimeStampToPreviousMondayMorning(timestamp: Long): Long {
-    val zone = java.time.ZoneId.systemDefault()
+    val zone = java.time.ZoneId.of("Europe/Berlin")
     val dateTime = java.time.Instant.ofEpochSecond(timestamp).atZone(zone)
     val monday = dateTime
         .with(ChronoField.HOUR_OF_DAY, 0)
@@ -27,7 +27,7 @@ fun unixTimeStampToPreviousMondayMorning(timestamp: Long): Long {
 }
 
 fun unixTimeStampToNextSundayMidnight(timestamp: Long): Long {
-    val zone = java.time.ZoneId.systemDefault()
+    val zone = java.time.ZoneId.of("Europe/Berlin")
     val dateTime = java.time.Instant.ofEpochSecond(timestamp).atZone(zone)
     val nextSunday = dateTime
         .with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY))
@@ -38,7 +38,7 @@ fun unixTimeStampToNextSundayMidnight(timestamp: Long): Long {
 
 
 fun unixTimeStampToDateString(timestamp: Long): String {
-    val zone = java.time.ZoneId.systemDefault()
+    val zone = java.time.ZoneId.of("Europe/Berlin")
     val dateTime = java.time.Instant.ofEpochSecond(timestamp).atZone(zone)
     return dateTime.toLocalDate().toString()
 }
