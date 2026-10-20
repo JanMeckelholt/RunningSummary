@@ -1,9 +1,3 @@
-import io.github.cdimascio.dotenv.dotenv
-val dotenv = dotenv {
-    ignoreIfMissing = true
-    directory = rootProject.buildFile.parentFile.absolutePath
-}
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -19,8 +13,6 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        val stravaClientId = dotenv.get("STRAVA_CLIENT_ID", "ab")
-        val stravaClientSecret = dotenv.get("STRAVA_CLIENT_SECRET", "cd")
         applicationId = "de.janmeckelholt.runningsummary"
         minSdk = 26
         targetSdk = 36
@@ -28,9 +20,6 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "STRAVA_CLIENT_ID", "\"$stravaClientId\"")
-        buildConfigField("String", "STRAVA_CLIENT_SECRET", "\"$stravaClientSecret\"")
-
     }
 
 
@@ -71,13 +60,9 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
 
-    implementation(libs.retrofit)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
-    implementation(libs.coil.compose)
-    implementation(libs.retrofit2.kotlinx.serialization.converter)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.logging.interceptor)
 
     implementation(libs.hilt.android)
     implementation(libs.androidx.datastore.core)

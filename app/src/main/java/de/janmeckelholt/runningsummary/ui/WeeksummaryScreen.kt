@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import de.janmeckelholt.runningsummary.Constants
 import de.janmeckelholt.runningsummary.theme.SuccessGreenContainer
 import de.janmeckelholt.runningsummary.theme.SuccessGreenText
 import de.janmeckelholt.runningsummary.ui.composables.DatePickerDocked
@@ -93,7 +94,7 @@ fun WeekSummaryScreen(vm: MainViewModel) {
                     value = unixTimeStampToDateString(weekSummary.startOfWeek)
                 )
                 HorizontalDivider()
-                SummaryRow(label = "Sessions", value = weekSummary.numberOfRuns.toString())
+                SummaryRow(label = "Runs", value = weekSummary.numberOfRuns.toString())
                 HorizontalDivider()
                 SummaryRow(label = "Distance", value = formatMetersToKm(weekSummary.totalDistance))
                 HorizontalDivider()
@@ -103,7 +104,7 @@ fun WeekSummaryScreen(vm: MainViewModel) {
                 )
                 HorizontalDivider()
 
-                val goalReached = weekSummary.totalElevationGain >= 500
+                val goalReached = weekSummary.totalElevationGain >= Constants.WEEKLY_ELEVATION_GOAL_METERS
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,

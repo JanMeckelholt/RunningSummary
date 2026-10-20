@@ -49,7 +49,7 @@ fun PreparationScreen(vm: MainViewModel) {
                 )
 
                 when (step) {
-                    Steps.GET_CODE -> {
+                    Steps.REQUESTING_PERMISSIONS -> {
                         if (errorMessage != null) {
                             Text(
                                 text = errorMessage!!,
@@ -74,15 +74,15 @@ fun PreparationScreen(vm: MainViewModel) {
                         }
                     }
 
-                    Steps.GET_TOKEN, Steps.GET_ATHLETE, Steps.GET_ACTIVITIES -> {
+                    Steps.LOADING, Steps.FETCHING_ACTIVITIES -> {
                         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                         Text(
-                            text = "Authenticating & Fetching Data...",
+                            text = "Loading & Fetching Data...",
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
 
-                    Steps.SHOW_WEEK_SUMMARY -> {}
+                    Steps.SHOWING_SUMMARY -> {}
                     Steps.INITIAL -> {
                         Button(
                             onClick = { vm.checkPermissionsAndFetch() },

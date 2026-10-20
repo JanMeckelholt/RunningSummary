@@ -5,13 +5,16 @@ import de.janmeckelholt.runningsummary.data.database.RunningDao
 import de.janmeckelholt.runningsummary.data.database.models.ActivityDto
 import de.janmeckelholt.runningsummary.utils.unixTimeStampToNextSundayMidnight
 import de.janmeckelholt.runningsummary.utils.unixTimeStampToPreviousMondayMorning
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import timber.log.Timber
 
-class HealthConnectRepo(
+@Singleton
+class HealthConnectRepo @Inject constructor(
     private val healthConnectManager: HealthConnectManager,
     private val dao: RunningDao
 ) {
@@ -99,10 +102,6 @@ class HealthConnectRepo(
         withContext(Dispatchers.IO) {
             dao.insertAllActivities(activities = activities)
         }
-    }
-
-    fun clearActivitiesCache() {
-        // No-op for now, cache is handled by DB replacement policy
     }
 
     private fun List<ExerciseSessionRecord>.deduplicate(): List<ExerciseSessionRecord> {

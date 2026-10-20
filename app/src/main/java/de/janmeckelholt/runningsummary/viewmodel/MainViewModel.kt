@@ -3,22 +3,25 @@ package de.janmeckelholt.runningsummary.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import de.janmeckelholt.runningsummary.Constants
+import de.janmeckelholt.runningsummary.PreferencesDataStore
 import de.janmeckelholt.runningsummary.Steps
 import de.janmeckelholt.runningsummary.data.HealthConnectManager
 import de.janmeckelholt.runningsummary.data.HealthConnectRepo
 import de.janmeckelholt.runningsummary.data.database.models.ActivityDto
-import de.janmeckelholt.runningsummary.data.database.models.AthleteDto
 import de.janmeckelholt.runningsummary.data.models.WeekSummary
 import de.janmeckelholt.runningsummary.data.models.toWeekSummary
 import de.janmeckelholt.runningsummary.utils.unixTimeStampToDateString
 import de.janmeckelholt.runningsummary.utils.unixTimeStampToPreviousMondayMorning
-import jakarta.inject.Inject
+import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -28,7 +31,8 @@ import timber.log.Timber
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val repo: HealthConnectRepo,
-    private val healthConnectManager: HealthConnectManager
+    private val healthConnectManager: HealthConnectManager,
+    private val preferencesDataStore: PreferencesDataStore
 ) : ViewModel() {
     private val _displayedDate =
         MutableStateFlow<Long>(unixTimeStampToPreviousMondayMorning(System.currentTimeMillis() / 1000))
@@ -84,29 +88,19 @@ class MainViewModel @Inject constructor(
     }
 
     fun showWeekOf(epoch: Long) {
-        _step.value = Steps.SHOW_WEEK_SUMMARY
+        _step.value = Steps.SHOWING_SUMMARY
         setDisplayedDate(epoch)
     }
-
-    private var _athleteDto = MutableStateFlow<AthleteDto?>(
-        AthleteDto(
-            id = 1L,
-            username = "local",
-            firstName = "Local",
-            lastName = "User"
-        )
-    )
-    val athleteDto: StateFlow<AthleteDto?> = _athleteDto.asStateFlow()
 
     fun fetchActivitiesForDisplayedWeek() {
         viewModelScope.launch {
             try {
                 if (healthConnectManager.hasBasicPermissions()) {
-                    _step.value = Steps.SHOW_WEEK_SUMMARY
+                    _step.value = Steps.SHOWING_SUMMARY
                     repo.fetchWeekActivities(_displayedDate.value)
                 } else {
                     _errorMessage.value = "Health Connect Permissions missing"
-                    _step.value = Steps.GET_CODE // Repurpose GET_CODE step for permissions
+                    _step.value = Steps.REQUESTING_PERMISSIONS
                 }
             } catch (e: Exception) {
                 Timber.e(e, "Error fetching activities for week")
@@ -119,12 +113,12 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 if (healthConnectManager.hasBasicPermissions()) {
-                    _step.value = Steps.SHOW_WEEK_SUMMARY
+                    _step.value = Steps.SHOWING_SUMMARY
                     repo.fetchWeekActivities(_displayedDate.value)
-                    backfillHistoricalData()
+                    syncHistoricalData()
                 } else {
                     _errorMessage.value = "Health Connect Permissions missing"
-                    _step.value = Steps.GET_CODE // Repurpose GET_CODE step for permissions
+                    _step.value = Steps.REQUESTING_PERMISSIONS
                 }
             } catch (e: Exception) {
                 Timber.e(e, "Error fetching activities")
@@ -133,24 +127,43 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun backfillHistoricalData() {
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+    /**
+     * Incremental sync: fetches only from the last sync timestamp forward.
+     * On first launch (no saved timestamp), looks back [Constants.DEFAULT_BACKFILL_SECONDS] (1 year).
+     * After a successful sync, persists the current time as the last sync point.
+     */
+    private fun syncHistoricalData() {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
-                Timber.i("Starting historical backfill from year 2000 to present...")
-                val startInstant = java.time.Instant.parse("2000-01-01T00:00:00Z")
-                val endInstant = java.time.Instant.now()
-                val backfilled = repo.fetchAndSaveActivitiesForRange(startInstant, endInstant)
-                Timber.i("Historical backfill completed. Saved ${backfilled.size} activities.")
+                val lastSyncEpoch = preferencesDataStore
+                    .getLong(Constants.LAST_SYNC_EPOCH_KEY, 0L)
+                    .first()
+
+                val now = java.time.Instant.now()
+                val startInstant = if (lastSyncEpoch == 0L) {
+                    // First sync: look back 1 year
+                    Timber.i("First sync — backfilling ${Constants.DEFAULT_BACKFILL_SECONDS / (24*3600)} days of history")
+                    now.minusSeconds(Constants.DEFAULT_BACKFILL_SECONDS)
+                } else {
+                    Timber.i("Incremental sync from last checkpoint ${java.time.Instant.ofEpochSecond(lastSyncEpoch)}")
+                    java.time.Instant.ofEpochSecond(lastSyncEpoch)
+                }
+
+                val synced = repo.fetchAndSaveActivitiesForRange(startInstant, now)
+                Timber.i("Sync completed. Saved ${synced.size} activities.")
+
+                // Persist the sync checkpoint
+                preferencesDataStore.saveLong(Constants.LAST_SYNC_EPOCH_KEY, now.epochSecond)
             } catch (e: Exception) {
-                Timber.e(e, "Error during historical backfill")
+                Timber.e(e, "Error during historical sync")
             }
         }
     }
 
     fun refreshActivities() {
         viewModelScope.launch {
-            repo.clearActivitiesCache()
             fetchActivitiesForDisplayedWeek()
+            syncHistoricalData()
         }
     }
 
@@ -159,7 +172,7 @@ class MainViewModel @Inject constructor(
             if (healthConnectManager.hasBasicPermissions()) {
                 fetchActivities()
             } else {
-                _step.value = Steps.GET_CODE // We use GET_CODE for GET_PERMISSIONS on UI side
+                _step.value = Steps.REQUESTING_PERMISSIONS
             }
         }
     }

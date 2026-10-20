@@ -23,7 +23,7 @@ import de.janmeckelholt.runningsummary.theme.RunningTheme
 import de.janmeckelholt.runningsummary.ui.PreparationScreen
 import de.janmeckelholt.runningsummary.ui.WeekSummaryScreen
 import de.janmeckelholt.runningsummary.viewmodel.MainViewModel
-import jakarta.inject.Inject
+import javax.inject.Inject
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
                 mainViewModel.fetchActivities()
             } else {
                 Timber.e("Health Connect basic permissions denied. Granted: $granted")
-                mainViewModel.setStep(Steps.GET_CODE)
+                mainViewModel.setStep(Steps.REQUESTING_PERMISSIONS)
             }
         }
     }
@@ -82,18 +82,18 @@ fun MainScreen(vm: MainViewModel, onRequestPermissions: () -> Unit) {
     val step by vm.step.collectAsStateWithLifecycle()
 
     LaunchedEffect(step) {
-        if (step == Steps.GET_CODE) { // We hijacked GET_CODE for asking permissions
+        if (step == Steps.REQUESTING_PERMISSIONS) {
             onRequestPermissions()
-            vm.setStep(Steps.GET_TOKEN) // Move to loading step so we don't endlessly launch intent
+            vm.setStep(Steps.LOADING)
         }
     }
 
     when (step) {
-        Steps.INITIAL, Steps.GET_CODE, Steps.GET_TOKEN, Steps.GET_ATHLETE, Steps.GET_ACTIVITIES -> {
+        Steps.INITIAL, Steps.REQUESTING_PERMISSIONS, Steps.LOADING, Steps.FETCHING_ACTIVITIES -> {
             PreparationScreen(vm)
         }
 
-        Steps.SHOW_WEEK_SUMMARY -> {
+        Steps.SHOWING_SUMMARY -> {
             WeekSummaryScreen(vm)
         }
     }
