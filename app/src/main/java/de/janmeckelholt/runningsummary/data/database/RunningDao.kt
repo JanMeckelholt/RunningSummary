@@ -21,4 +21,7 @@ interface RunningDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertAllActivities(vararg activities: ActivityDto)
+
+    @Query("delete from ${Constants.ACTIVITY_TABLE_NAME} where startDateUnix <= :before and startDateUnix >= :after")
+    fun deleteActivities(before: Long, after: Long)
 }

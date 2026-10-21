@@ -3,15 +3,17 @@ package de.janmeckelholt.runningsummary.data
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import de.janmeckelholt.runningsummary.data.database.RunningDao
 import de.janmeckelholt.runningsummary.data.database.models.ActivityDto
+import de.janmeckelholt.runningsummary.data.database.models.deduplicateActivities
 import de.janmeckelholt.runningsummary.utils.unixTimeStampToNextSundayMidnight
 import de.janmeckelholt.runningsummary.utils.unixTimeStampToPreviousMondayMorning
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import java.time.Instant
 import timber.log.Timber
+import java.time.Instant
+import javax.inject.Inject
+import javax.inject.Singleton
 
 @Singleton
 class HealthConnectRepo @Inject constructor(
@@ -25,7 +27,9 @@ class HealthConnectRepo @Inject constructor(
         return dao.getActivitiesLiveData(
             before = before,
             after = after
-        )
+        ).map { activities ->
+            activities?.deduplicateActivities()
+        }
     }
 
     suspend fun fetchAndSaveActivitiesForRange(
@@ -61,14 +65,41 @@ class HealthConnectRepo @Inject constructor(
         }
 
         val activities = sessions.map { session ->
-            // Match distance and elevation records overlapping session duration
-            val sessionDistanceMeters = distanceRecords
-                .filter { it.startTime <= session.endTime && it.endTime >= session.startTime }
-                .sumOf { it.distance.inMeters }
+            val sessionOrigin = session.metadata.dataOrigin
+            val sessionStart = session.startTime.minusSeconds(60)
+            val sessionEnd = session.endTime.plusSeconds(60)
 
-            val sessionElevationMeters = elevationRecords
-                .filter { it.startTime <= session.endTime && it.endTime >= session.startTime }
-                .sumOf { it.elevation.inMeters }
+            val sameOriginDistance = distanceRecords.filter {
+                it.metadata.dataOrigin == sessionOrigin &&
+                        it.startTime >= sessionStart && it.endTime <= sessionEnd
+            }
+            val sessionDistanceMeters = if (sameOriginDistance.isNotEmpty()) {
+                sameOriginDistance.sumOf { it.distance.inMeters }
+            } else {
+                val contained = distanceRecords.filter {
+                    it.startTime >= sessionStart && it.endTime <= sessionEnd
+                }
+                val bestOrigin = contained.firstOrNull()?.metadata?.dataOrigin
+                contained.filter { it.metadata.dataOrigin == bestOrigin }
+                    .sumOf { it.distance.inMeters }
+            }
+
+            val sameOriginElevation = elevationRecords.filter {
+                it.metadata.dataOrigin == sessionOrigin &&
+                        it.startTime >= sessionStart && it.endTime <= sessionEnd
+            }
+            val sessionElevationMeters = if (sameOriginElevation.isNotEmpty()) {
+                sameOriginElevation.sumOf { it.elevation.inMeters }
+            } else {
+                val contained = elevationRecords.filter {
+                    it.startTime >= sessionStart && it.endTime <= sessionEnd
+                }
+                val bestOrigin = contained.firstOrNull()?.metadata?.dataOrigin
+                contained.filter { it.metadata.dataOrigin == bestOrigin }
+                    .sumOf { it.elevation.inMeters }
+            }
+
+            Timber.i("___ Matched session '${session.title ?: session.metadata.id}': distance=$sessionDistanceMeters m, elevation=$sessionElevationMeters m (origin=${sessionOrigin.packageName})")
 
             session.toActivityDto(
                 distanceMeters = sessionDistanceMeters,
@@ -77,8 +108,14 @@ class HealthConnectRepo @Inject constructor(
         }
 
         if (activities.isNotEmpty()) {
-            Timber.i("___ Saving ${activities.size} activities to Room DB")
-            insertAllActivities(*activities.toTypedArray())
+            Timber.i("___ Saving ${activities.size} activities to Room DB (replacing range $startInstant to $endInstant)")
+            withContext(Dispatchers.IO) {
+                dao.deleteActivities(
+                    before = endInstant.epochSecond,
+                    after = startInstant.epochSecond
+                )
+                dao.insertAllActivities(*activities.toTypedArray())
+            }
         } else {
             Timber.w("___ No activities to save to Room DB for range $startInstant to $endInstant")
         }
@@ -112,45 +149,110 @@ class HealthConnectRepo @Inject constructor(
 
         for (session in sorted) {
             val duplicateIndex = result.indexOfFirst { existing ->
-                val samePackage = existing.metadata.dataOrigin.packageName == session.metadata.dataOrigin.packageName
-                if (samePackage) {
-                    // Same app logging multiple workouts - only duplicate if exact same ID
-                    existing.metadata.id == session.metadata.id
-                } else {
-                    // Different apps logging the same physical workout
-                    val startDiffSeconds = kotlin.math.abs(
-                        java.time.Duration.between(existing.startTime, session.startTime).seconds
-                    )
-                    startDiffSeconds < 120 && existing.exerciseType == session.exerciseType
-                }
+                areSessionDuplicates(existing, session)
             }
 
             if (duplicateIndex != -1) {
                 val existing = result[duplicateIndex]
-                val sessionIsGarmin =
-                    session.metadata.dataOrigin.packageName.contains("garmin", ignoreCase = true)
-                val existingIsGarmin =
-                    existing.metadata.dataOrigin.packageName.contains("garmin", ignoreCase = true)
-
-                if (sessionIsGarmin && !existingIsGarmin) {
-                    result[duplicateIndex] = session
-                } else if (!sessionIsGarmin && existingIsGarmin) {
-                    // Keep existing Garmin session
-                } else {
-                    val sessionDuration =
-                        java.time.Duration.between(session.startTime, session.endTime).seconds
-                    val existingDuration =
-                        java.time.Duration.between(existing.startTime, existing.endTime).seconds
-                    if (sessionDuration > existingDuration) {
-                        result[duplicateIndex] = session
-                    }
-                }
+                result[duplicateIndex] = selectPreferredSession(existing, session)
             } else {
                 result.add(session)
             }
         }
 
         return result
+    }
+
+    private fun areSessionDuplicates(
+        existing: ExerciseSessionRecord,
+        session: ExerciseSessionRecord
+    ): Boolean {
+        val samePackage =
+            existing.metadata.dataOrigin.packageName == session.metadata.dataOrigin.packageName
+        if (samePackage) {
+            // Same app logging multiple workouts - only duplicate if exact same ID
+            return existing.metadata.id == session.metadata.id
+        }
+
+        // Different apps (e.g. Garmin and Strava) logging the same physical workout
+        val startDiffSeconds = kotlin.math.abs(
+            java.time.Duration.between(existing.startTime, session.startTime).seconds
+        )
+
+        val latestStart =
+            if (existing.startTime.isAfter(session.startTime)) existing.startTime else session.startTime
+        val earliestEnd =
+            if (existing.endTime.isBefore(session.endTime)) existing.endTime else session.endTime
+        val overlapSeconds = if (latestStart.isBefore(earliestEnd)) {
+            java.time.Duration.between(latestStart, earliestEnd).seconds
+        } else {
+            0L
+        }
+
+        val existingDuration =
+            java.time.Duration.between(existing.startTime, existing.endTime).seconds
+        val sessionDuration = java.time.Duration.between(session.startTime, session.endTime).seconds
+        val minDuration = kotlin.math.min(existingDuration, sessionDuration)
+
+        val timeMatches =
+            startDiffSeconds < 300 || (minDuration > 0 && overlapSeconds > minDuration / 2)
+        if (!timeMatches) return false
+
+        // Exercise type compatibility
+        val existingIsRun = isRunType(existing.exerciseType)
+        val sessionIsRun = isRunType(session.exerciseType)
+        if (existingIsRun && sessionIsRun) return true
+
+        val existingIsGeneric = isGenericWorkoutType(existing.exerciseType)
+        val sessionIsGeneric = isGenericWorkoutType(session.exerciseType)
+        if (existingIsGeneric || sessionIsGeneric) return true
+
+        // If neither is a run (e.g. Strength vs Other/Workout), overlapping time means same workout
+        if (!existingIsRun && !sessionIsRun) return true
+
+        return existing.exerciseType == session.exerciseType
+    }
+
+    private fun isRunType(exerciseType: Int): Boolean {
+        return exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_RUNNING ||
+                exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL
+    }
+
+    private fun isGenericWorkoutType(exerciseType: Int): Boolean {
+        return exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT ||
+                exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_CALISTHENICS ||
+                exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_BOOT_CAMP ||
+                exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_EXERCISE_CLASS ||
+                exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_HIGH_INTENSITY_INTERVAL_TRAINING
+    }
+
+    private fun selectPreferredSession(
+        existing: ExerciseSessionRecord,
+        session: ExerciseSessionRecord
+    ): ExerciseSessionRecord {
+        val sessionIsGarmin =
+            session.metadata.dataOrigin.packageName.contains("garmin", ignoreCase = true)
+        val existingIsGarmin =
+            existing.metadata.dataOrigin.packageName.contains("garmin", ignoreCase = true)
+
+        if (sessionIsGarmin && !existingIsGarmin) {
+            return session
+        } else if (!sessionIsGarmin && existingIsGarmin) {
+            return existing
+        }
+
+        // Prefer specific exercise type over generic OTHER_WORKOUT
+        val existingIsGeneric =
+            existing.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT
+        val sessionIsGeneric =
+            session.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT
+        if (!sessionIsGeneric && existingIsGeneric) return session
+        if (!existingIsGeneric && sessionIsGeneric) return existing
+
+        val sessionDuration = java.time.Duration.between(session.startTime, session.endTime).seconds
+        val existingDuration =
+            java.time.Duration.between(existing.startTime, existing.endTime).seconds
+        return if (sessionDuration > existingDuration) session else existing
     }
 
     private fun ExerciseSessionRecord.toActivityDto(
@@ -166,6 +268,9 @@ class HealthConnectRepo @Inject constructor(
             ExerciseSessionRecord.EXERCISE_TYPE_HIKING -> "Hike"
             ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_OPEN_WATER,
             ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL -> "Swim"
+            ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING,
+            ExerciseSessionRecord.EXERCISE_TYPE_WEIGHTLIFTING,
+            ExerciseSessionRecord.EXERCISE_TYPE_CALISTHENICS -> "Strength"
 
             else -> title ?: "Other"
         }
