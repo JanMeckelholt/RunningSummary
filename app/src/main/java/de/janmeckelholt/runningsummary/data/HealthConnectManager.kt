@@ -1,6 +1,8 @@
 package de.janmeckelholt.runningsummary.data
 
 import android.content.Context
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.DistanceRecord
@@ -46,7 +48,12 @@ class HealthConnectManager @Inject constructor(@param:ApplicationContext private
     }
 
     suspend fun hasHistoryPermission(): Boolean {
-        return getGrantedPermissions().contains(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY)
+        val grantedInController = getGrantedPermissions().contains(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY)
+        val grantedInSystem = ContextCompat.checkSelfPermission(
+            context,
+            HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY
+        ) == PackageManager.PERMISSION_GRANTED
+        return grantedInController || grantedInSystem
     }
 
     suspend fun readExerciseSessions(start: Instant, end: Instant): List<ExerciseSessionRecord> {

@@ -109,7 +109,7 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun fetchActivities() {
+    fun fetchActivities(forceFullBackfill: Boolean = false) {
         viewModelScope.launch {
             try {
                 if (healthConnectManager.hasBasicPermissions()) {
@@ -121,7 +121,7 @@ class MainViewModel @Inject constructor(
                     if (_step.value != Steps.SHOWING_RUN_DETAILS) {
                         _step.value = Steps.SHOWING_SUMMARY
                     }
-                    syncHistoricalData()
+                    syncHistoricalData(forceFullBackfill = forceFullBackfill)
                 } else {
                     _errorMessage.value = "Health Connect permissions missing"
                     _step.value = Steps.REQUESTING_PERMISSIONS
@@ -137,11 +137,14 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    private suspend fun syncHistoricalData() {
+    private suspend fun syncHistoricalData(forceFullBackfill: Boolean = false) {
         withContext(Dispatchers.IO) {
             try {
                 val lastSyncEpoch = preferencesDataStore
                     .getLong(Constants.LAST_SYNC_EPOCH_KEY, 0L)
+                    .first()
+                val historyBackfilledEpoch = preferencesDataStore
+                    .getLong(Constants.HISTORY_BACKFILLED_KEY, 0L)
                     .first()
 
                 val now = Instant.now()
@@ -153,8 +156,12 @@ class MainViewModel @Inject constructor(
                     29L * 24 * 60 * 60
                 }
 
-                val startInstant = if (lastSyncEpoch == 0L) {
-                    Timber.i("First sync — backfilling up to ${maxLookbackSeconds / (24 * 3600)} days of history")
+                val needsFullBackfill = forceFullBackfill ||
+                    lastSyncEpoch == 0L ||
+                    (hasHistory && historyBackfilledEpoch == 0L)
+
+                val startInstant = if (needsFullBackfill) {
+                    Timber.i("Full sync — backfilling up to ${maxLookbackSeconds / (24 * 3600)} days of history (hasHistory=$hasHistory)")
                     now.minusSeconds(maxLookbackSeconds)
                 } else {
                     val checkpoint = Instant.ofEpochSecond(lastSyncEpoch).minusSeconds(3600)
@@ -166,6 +173,9 @@ class MainViewModel @Inject constructor(
                 Timber.i("Sync completed. Saved ${synced.size} activities.")
 
                 preferencesDataStore.saveLong(Constants.LAST_SYNC_EPOCH_KEY, now.epochSecond)
+                if (hasHistory && needsFullBackfill) {
+                    preferencesDataStore.saveLong(Constants.HISTORY_BACKFILLED_KEY, now.epochSecond)
+                }
             } catch (e: Exception) {
                 Timber.e(e, "Error during historical sync")
             }
@@ -173,6 +183,6 @@ class MainViewModel @Inject constructor(
     }
 
     fun refreshActivities() {
-        fetchActivities()
+        fetchActivities(forceFullBackfill = true)
     }
 }

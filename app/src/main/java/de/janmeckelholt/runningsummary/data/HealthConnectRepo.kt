@@ -1,5 +1,7 @@
 package de.janmeckelholt.runningsummary.data
 
+import androidx.health.connect.client.records.DistanceRecord
+import androidx.health.connect.client.records.ElevationGainedRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import de.janmeckelholt.runningsummary.data.database.RunningDao
 import de.janmeckelholt.runningsummary.data.database.models.ActivityDto
@@ -33,11 +35,13 @@ class HealthConnectRepo @Inject constructor(
         startInstant: Instant,
         endInstant: Instant
     ): List<ActivityDto> {
-        val effectiveStart = if (healthConnectManager.hasHistoryPermission()) {
+        val earliestWithoutHistory = Instant.now().minusSeconds(29L * 24 * 60 * 60)
+        val hasHistory = healthConnectManager.hasHistoryPermission()
+
+        var effectiveStart = if (hasHistory) {
             startInstant
         } else {
-            val earliestAllowed = Instant.now().minusSeconds(29L * 24 * 60 * 60)
-            if (startInstant.isBefore(earliestAllowed)) earliestAllowed else startInstant
+            if (startInstant.isBefore(earliestWithoutHistory)) earliestWithoutHistory else startInstant
         }
 
         if (!effectiveStart.isBefore(endInstant)) {
@@ -45,8 +49,17 @@ class HealthConnectRepo @Inject constructor(
             return emptyList()
         }
 
-        Timber.i("___ Fetching Health Connect sessions from $effectiveStart to $endInstant")
-        val rawSessions = healthConnectManager.readExerciseSessions(effectiveStart, endInstant)
+        Timber.i("___ Fetching Health Connect sessions from $effectiveStart to $endInstant (hasHistory=$hasHistory)")
+        val rawSessions = try {
+            healthConnectManager.readExerciseSessions(effectiveStart, endInstant)
+        } catch (e: SecurityException) {
+            Timber.w(e, "___ SecurityException reading full range, falling back to 29-day window")
+            effectiveStart = if (startInstant.isBefore(earliestWithoutHistory)) earliestWithoutHistory else startInstant
+            if (!effectiveStart.isBefore(endInstant)) {
+                return emptyList()
+            }
+            healthConnectManager.readExerciseSessions(effectiveStart, endInstant)
+        }
         Timber.i("___ Health Connect returned ${rawSessions.size} raw exercise sessions for range $effectiveStart to $endInstant")
 
         if (rawSessions.isEmpty()) {
@@ -62,14 +75,39 @@ class HealthConnectRepo @Inject constructor(
         val sessions = rawSessions.deduplicate()
         Timber.i("___ After deduplication: ${sessions.size} sessions remain")
 
-        val minStart = sessions.minOf { it.startTime }.minusSeconds(60)
-        val maxEnd = sessions.maxOf { it.endTime }.plusSeconds(60)
+        val distanceRecords = mutableListOf<DistanceRecord>()
+        val elevationRecords = mutableListOf<ElevationGainedRecord>()
 
-        val (distanceRecords, elevationRecords) = coroutineScope {
-            val distDeferred = async { healthConnectManager.readDistanceRecords(minStart, maxEnd) }
-            val elevDeferred =
-                async { healthConnectManager.readElevationGainedRecords(minStart, maxEnd) }
-            Pair(distDeferred.await(), elevDeferred.await())
+        for (cluster in sessions.clusterByTimeGap(maxGapSeconds = 7L * 24 * 3600)) {
+            val rawClusterStart = cluster.minOf { it.startTime }.minusSeconds(60)
+            val clusterStart = if (!hasHistory && rawClusterStart.isBefore(effectiveStart)) {
+                effectiveStart
+            } else {
+                rawClusterStart
+            }
+            val clusterEnd = cluster.maxOf { it.endTime }.plusSeconds(60)
+
+            val (clusterDist, clusterElev) = coroutineScope {
+                val distDeferred = async {
+                    try {
+                        healthConnectManager.readDistanceRecords(clusterStart, clusterEnd)
+                    } catch (e: Exception) {
+                        Timber.e(e, "___ Error reading distance records for $clusterStart..$clusterEnd")
+                        emptyList()
+                    }
+                }
+                val elevDeferred = async {
+                    try {
+                        healthConnectManager.readElevationGainedRecords(clusterStart, clusterEnd)
+                    } catch (e: Exception) {
+                        Timber.e(e, "___ Error reading elevation records for $clusterStart..$clusterEnd")
+                        emptyList()
+                    }
+                }
+                Pair(distDeferred.await(), elevDeferred.await())
+            }
+            distanceRecords.addAll(clusterDist)
+            elevationRecords.addAll(clusterElev)
         }
 
         val activities = sessions.map { session ->
@@ -135,6 +173,33 @@ class HealthConnectRepo @Inject constructor(
 
         Timber.i("___ fetchWeekActivities epoch=$unixTimeStamp -> Monday=$after, Sunday=$before")
         return fetchAndSaveActivitiesForRange(startInstant, endInstant)
+    }
+
+    private fun List<ExerciseSessionRecord>.clusterByTimeGap(
+        maxGapSeconds: Long
+    ): List<List<ExerciseSessionRecord>> {
+        if (isEmpty()) return emptyList()
+        val sorted = this.sortedBy { it.startTime }
+        val clusters = mutableListOf<MutableList<ExerciseSessionRecord>>()
+        var currentCluster = mutableListOf(sorted.first())
+        var currentClusterMaxEnd = sorted.first().endTime
+
+        for (i in 1 until sorted.size) {
+            val session = sorted[i]
+            val gapSeconds = Duration.between(currentClusterMaxEnd, session.startTime).seconds
+            if (gapSeconds <= maxGapSeconds) {
+                currentCluster.add(session)
+                if (session.endTime.isAfter(currentClusterMaxEnd)) {
+                    currentClusterMaxEnd = session.endTime
+                }
+            } else {
+                clusters.add(currentCluster)
+                currentCluster = mutableListOf(session)
+                currentClusterMaxEnd = session.endTime
+            }
+        }
+        clusters.add(currentCluster)
+        return clusters
     }
 
     private fun List<ExerciseSessionRecord>.deduplicate(): List<ExerciseSessionRecord> {
