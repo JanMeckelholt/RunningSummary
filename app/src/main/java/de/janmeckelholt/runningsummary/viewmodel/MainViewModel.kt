@@ -11,22 +11,22 @@ import de.janmeckelholt.runningsummary.data.HealthConnectRepo
 import de.janmeckelholt.runningsummary.data.database.models.ActivityDto
 import de.janmeckelholt.runningsummary.data.models.WeekSummary
 import de.janmeckelholt.runningsummary.data.models.toWeekSummary
-import de.janmeckelholt.runningsummary.utils.unixTimeStampToDateString
 import de.janmeckelholt.runningsummary.utils.unixTimeStampToPreviousMondayMorning
-import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.time.Instant
+import javax.inject.Inject
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
@@ -35,76 +35,76 @@ class MainViewModel @Inject constructor(
     private val preferencesDataStore: PreferencesDataStore
 ) : ViewModel() {
     private val _displayedDate =
-        MutableStateFlow<Long>(unixTimeStampToPreviousMondayMorning(System.currentTimeMillis() / 1000))
+        MutableStateFlow(unixTimeStampToPreviousMondayMorning(System.currentTimeMillis() / 1000))
     val displayedDate: StateFlow<Long> = _displayedDate.asStateFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    fun setErrorMessage(message: String?) {
+        _errorMessage.value = message
+    }
+
+    private val _step = MutableStateFlow(Steps.INITIAL)
+    val step: StateFlow<Steps> = _step.asStateFlow()
+
+    fun setStep(newStep: Steps) {
+        _step.value = newStep
+    }
+
+    private val _selectedRunId = MutableStateFlow<String?>(null)
+    val selectedRunId: StateFlow<String?> = _selectedRunId.asStateFlow()
+
+    fun selectRun(runId: String?) {
+        _selectedRunId.value = runId
+    }
+
+    fun openRunDetails(runId: String? = null) {
+        _selectedRunId.value = runId ?: weekSummary.value.runs.lastOrNull()?.id
+        _step.value = Steps.SHOWING_RUN_DETAILS
+    }
+
+    fun closeRunDetails() {
+        _step.value = Steps.SHOWING_SUMMARY
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    val weekActivities: StateFlow<List<ActivityDto>> = _displayedDate
+    val weekSummary: StateFlow<WeekSummary> = _displayedDate
         .flatMapLatest { epoch ->
-            repo.getWeekActivitiesFlow(epoch)
+            repo.getWeekActivitiesFlow(epoch).map { activities ->
+                activities.toWeekSummary(epoch)
+            }
         }
-        .map { it ?: emptyList() }
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = emptyList()
-        )
-
-    val weekSummary: StateFlow<WeekSummary> =
-        combine(_displayedDate, weekActivities) { epoch, activities ->
-            activities.toWeekSummary(epoch)
-        }.stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
+            started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptyList<ActivityDto>().toWeekSummary(_displayedDate.value)
         )
 
     fun setDisplayedDate(epoch: Long) {
         val newMonday = unixTimeStampToPreviousMondayMorning(epoch)
         _displayedDate.value = newMonday
+        _selectedRunId.value = null
         fetchActivitiesForDisplayedWeek()
-    }
-
-    val formattedDisplayedDate: StateFlow<String> = _displayedDate
-        .map { epoch ->
-            unixTimeStampToDateString(epoch)
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = java.time.Instant.ofEpochSecond(_displayedDate.value)
-                .atZone(java.time.ZoneId.systemDefault())
-                .toLocalDate()
-                .toString()
-        )
-
-    private var _step = MutableStateFlow<Steps>(Steps.INITIAL)
-    val step: StateFlow<Steps> = _step.asStateFlow()
-    fun setStep(newStep: Steps) {
-        _step.value = newStep
-    }
-
-    fun showWeekOf(epoch: Long) {
-        _step.value = Steps.SHOWING_SUMMARY
-        setDisplayedDate(epoch)
     }
 
     fun fetchActivitiesForDisplayedWeek() {
         viewModelScope.launch {
             try {
                 if (healthConnectManager.hasBasicPermissions()) {
-                    _step.value = Steps.SHOWING_SUMMARY
+                    _errorMessage.value = null
+                    if (_step.value != Steps.SHOWING_RUN_DETAILS) {
+                        _step.value = Steps.SHOWING_SUMMARY
+                    }
                     repo.fetchWeekActivities(_displayedDate.value)
                 } else {
-                    _errorMessage.value = "Health Connect Permissions missing"
+                    _errorMessage.value = "Health Connect permissions missing"
                     _step.value = Steps.REQUESTING_PERMISSIONS
                 }
             } catch (e: Exception) {
                 Timber.e(e, "Error fetching activities for week")
-                _errorMessage.value = "Failed to read Health Connect"
+                _errorMessage.value =
+                    "Failed to read Health Connect: ${e.localizedMessage ?: e.message}"
             }
         }
     }
@@ -113,46 +113,58 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 if (healthConnectManager.hasBasicPermissions()) {
-                    _step.value = Steps.SHOWING_SUMMARY
+                    _errorMessage.value = null
+                    if (_step.value != Steps.SHOWING_SUMMARY && _step.value != Steps.SHOWING_RUN_DETAILS) {
+                        _step.value = Steps.LOADING
+                    }
                     repo.fetchWeekActivities(_displayedDate.value)
+                    if (_step.value != Steps.SHOWING_RUN_DETAILS) {
+                        _step.value = Steps.SHOWING_SUMMARY
+                    }
                     syncHistoricalData()
                 } else {
-                    _errorMessage.value = "Health Connect Permissions missing"
+                    _errorMessage.value = "Health Connect permissions missing"
                     _step.value = Steps.REQUESTING_PERMISSIONS
                 }
             } catch (e: Exception) {
                 Timber.e(e, "Error fetching activities")
-                _errorMessage.value = "Failed to read Health Connect"
+                _errorMessage.value =
+                    "Failed to read Health Connect: ${e.localizedMessage ?: e.message}"
+                if (_step.value == Steps.LOADING) {
+                    _step.value = Steps.SHOWING_SUMMARY
+                }
             }
         }
     }
 
-    /**
-     * Incremental sync: fetches only from the last sync timestamp forward.
-     * On first launch (no saved timestamp), looks back [Constants.DEFAULT_BACKFILL_SECONDS] (1 year).
-     * After a successful sync, persists the current time as the last sync point.
-     */
-    private fun syncHistoricalData() {
-        viewModelScope.launch(Dispatchers.IO) {
+    private suspend fun syncHistoricalData() {
+        withContext(Dispatchers.IO) {
             try {
                 val lastSyncEpoch = preferencesDataStore
                     .getLong(Constants.LAST_SYNC_EPOCH_KEY, 0L)
                     .first()
 
-                val now = java.time.Instant.now()
-                val startInstant = if (lastSyncEpoch == 0L) {
-                    // First sync: look back 1 year
-                    Timber.i("First sync — backfilling ${Constants.DEFAULT_BACKFILL_SECONDS / (24*3600)} days of history")
-                    now.minusSeconds(Constants.DEFAULT_BACKFILL_SECONDS)
+                val now = Instant.now()
+                val hasHistory = healthConnectManager.hasHistoryPermission()
+                val maxLookbackSeconds = if (hasHistory) {
+                    Constants.DEFAULT_BACKFILL_SECONDS
                 } else {
-                    Timber.i("Incremental sync from last checkpoint ${java.time.Instant.ofEpochSecond(lastSyncEpoch)}")
-                    java.time.Instant.ofEpochSecond(lastSyncEpoch)
+                    // Capped to 29 days if READ_HEALTH_DATA_HISTORY is not granted
+                    29L * 24 * 60 * 60
+                }
+
+                val startInstant = if (lastSyncEpoch == 0L) {
+                    Timber.i("First sync — backfilling up to ${maxLookbackSeconds / (24 * 3600)} days of history")
+                    now.minusSeconds(maxLookbackSeconds)
+                } else {
+                    val checkpoint = Instant.ofEpochSecond(lastSyncEpoch).minusSeconds(3600)
+                    val earliestAllowed = now.minusSeconds(maxLookbackSeconds)
+                    if (checkpoint.isBefore(earliestAllowed)) earliestAllowed else checkpoint
                 }
 
                 val synced = repo.fetchAndSaveActivitiesForRange(startInstant, now)
                 Timber.i("Sync completed. Saved ${synced.size} activities.")
 
-                // Persist the sync checkpoint
                 preferencesDataStore.saveLong(Constants.LAST_SYNC_EPOCH_KEY, now.epochSecond)
             } catch (e: Exception) {
                 Timber.e(e, "Error during historical sync")
@@ -161,19 +173,6 @@ class MainViewModel @Inject constructor(
     }
 
     fun refreshActivities() {
-        viewModelScope.launch {
-            fetchActivitiesForDisplayedWeek()
-            syncHistoricalData()
-        }
-    }
-
-    fun checkPermissionsAndFetch() {
-        viewModelScope.launch {
-            if (healthConnectManager.hasBasicPermissions()) {
-                fetchActivities()
-            } else {
-                _step.value = Steps.REQUESTING_PERMISSIONS
-            }
-        }
+        fetchActivities()
     }
 }

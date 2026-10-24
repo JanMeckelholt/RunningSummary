@@ -11,17 +11,20 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface RunningDao {
-    @Transaction
-    @Query("select * from ${Constants.ACTIVITY_TABLE_NAME} where startDateUnix <= :before and startDateUnix >= :after order by startDateUnix desc")
-    fun getActivitiesLiveData(before: Long, after: Long): Flow<List<ActivityDto>?>
-
-    @Transaction
-    @Query("select * from ${Constants.ACTIVITY_TABLE_NAME} where startDateUnix <= :before and startDateUnix >= :after order by startDateUnix desc")
-    fun getActivities(before: Long, after: Long): List<ActivityDto>?
+    @Query("SELECT * FROM ${Constants.ACTIVITY_TABLE_NAME} WHERE startDateUnix <= :before AND startDateUnix >= :after ORDER BY startDateUnix DESC")
+    fun getActivitiesLiveData(before: Long, after: Long): Flow<List<ActivityDto>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insertAllActivities(vararg activities: ActivityDto)
+    suspend fun insertAllActivities(vararg activities: ActivityDto)
 
-    @Query("delete from ${Constants.ACTIVITY_TABLE_NAME} where startDateUnix <= :before and startDateUnix >= :after")
-    fun deleteActivities(before: Long, after: Long)
+    @Query("DELETE FROM ${Constants.ACTIVITY_TABLE_NAME} WHERE startDateUnix <= :before AND startDateUnix >= :after")
+    suspend fun deleteActivities(before: Long, after: Long)
+
+    @Transaction
+    suspend fun replaceActivitiesInRange(before: Long, after: Long, activities: List<ActivityDto>) {
+        deleteActivities(before = before, after = after)
+        if (activities.isNotEmpty()) {
+            insertAllActivities(*activities.toTypedArray())
+        }
+    }
 }

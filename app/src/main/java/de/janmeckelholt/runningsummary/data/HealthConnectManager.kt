@@ -9,42 +9,44 @@ import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
-import java.time.Instant
 
 @Singleton
-class HealthConnectManager @Inject constructor(@ApplicationContext private val context: Context) {
+class HealthConnectManager @Inject constructor(@param:ApplicationContext private val context: Context) {
     val healthConnectClient by lazy { HealthConnectClient.getOrCreate(context) }
 
     fun getSdkStatus(): Int {
         return HealthConnectClient.getSdkStatus(context)
     }
 
-    val healthPermissions = setOf(
+    val basicPermissions = setOf(
         HealthPermission.getReadPermission(ExerciseSessionRecord::class),
         HealthPermission.getReadPermission(DistanceRecord::class),
         HealthPermission.getReadPermission(ElevationGainedRecord::class)
     )
 
-    val permissions = healthPermissions + setOf("android.permission.health.READ_HEALTH_DATA_HISTORY")
+    val allPermissions =
+        basicPermissions + setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY)
 
-    suspend fun hasBasicPermissions(): Boolean {
+    suspend fun getGrantedPermissions(): Set<String> {
         if (getSdkStatus() != HealthConnectClient.SDK_AVAILABLE) {
-            return false
+            return emptySet()
         }
-        val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        return granted.containsAll(healthPermissions)
+        return try {
+            healthConnectClient.permissionController.getGrantedPermissions()
+        } catch (_: Exception) {
+            emptySet()
+        }
     }
 
-    suspend fun hasAllPermissions(): Boolean {
-        val hasHealthPermissions = hasBasicPermissions()
-        val hasHistoryPermission = if (android.os.Build.VERSION.SDK_INT >= 34) {
-            context.checkSelfPermission("android.permission.health.READ_HEALTH_DATA_HISTORY") == android.content.pm.PackageManager.PERMISSION_GRANTED
-        } else {
-            true
-        }
-        return hasHealthPermissions && hasHistoryPermission
+    suspend fun hasBasicPermissions(): Boolean {
+        return getGrantedPermissions().containsAll(basicPermissions)
+    }
+
+    suspend fun hasHistoryPermission(): Boolean {
+        return getGrantedPermissions().contains(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY)
     }
 
     suspend fun readExerciseSessions(start: Instant, end: Instant): List<ExerciseSessionRecord> {

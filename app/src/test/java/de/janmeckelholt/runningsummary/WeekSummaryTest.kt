@@ -2,6 +2,8 @@ package de.janmeckelholt.runningsummary
 
 import de.janmeckelholt.runningsummary.data.database.models.ActivityDto
 import de.janmeckelholt.runningsummary.data.models.toWeekSummary
+import de.janmeckelholt.runningsummary.utils.formatPacePerKm
+import de.janmeckelholt.runningsummary.utils.unixTimeStampToNextMondayMorning
 import de.janmeckelholt.runningsummary.utils.unixTimeStampToNextSundayMidnight
 import de.janmeckelholt.runningsummary.utils.unixTimeStampToPreviousMondayMorning
 import org.junit.Assert.assertEquals
@@ -20,67 +22,43 @@ class WeekSummaryTest {
         val activities = listOf(
             ActivityDto(
                 id = "1",
-                athleteId = 1L,
                 name = "Monday Run",
                 distance = 10000.0,
                 movingTime = 3600,
                 elapsedTime = 3600,
                 totalElevationGain = 100.0,
                 type = "Run",
-                startDate = "2025-05-12T08:00:00Z",
-                startDateLocal = "2025-05-12T08:00:00Z",
                 startDateUnix = mondayEpoch + 8 * 3600,
-                timezone = "UTC",
-                utcOffset = 0.0,
-                sportType = "Run"
             ),
             ActivityDto(
                 id = "2",
-                athleteId = 1L,
                 name = "Wednesday Walk",
                 distance = 5000.0,
                 movingTime = 1800,
                 elapsedTime = 1800,
                 totalElevationGain = 50.0,
                 type = "Walk",
-                startDate = "2025-05-14T10:00:00Z",
-                startDateLocal = "2025-05-14T10:00:00Z",
                 startDateUnix = mondayEpoch + 2 * 86400 + 10 * 3600,
-                timezone = "UTC",
-                utcOffset = 0.0,
-                sportType = "Walk"
             ),
             ActivityDto(
                 id = "3",
-                athleteId = 1L,
                 name = "Sunday Run",
                 distance = 12000.0,
                 movingTime = 4200,
                 elapsedTime = 4200,
                 totalElevationGain = 150.0,
                 type = "Run",
-                startDate = "2025-05-18T18:00:00Z",
-                startDateLocal = "2025-05-18T18:00:00Z",
                 startDateUnix = mondayEpoch + 6 * 86400 + 18 * 3600,
-                timezone = "UTC",
-                utcOffset = 0.0,
-                sportType = "Run"
             ),
             ActivityDto(
                 id = "4",
-                athleteId = 1L,
                 name = "Next Week Run",
                 distance = 15000.0,
                 movingTime = 5000,
                 elapsedTime = 5000,
                 totalElevationGain = 200.0,
                 type = "Run",
-                startDate = "2025-05-19T08:00:00Z",
-                startDateLocal = "2025-05-19T08:00:00Z",
                 startDateUnix = mondayEpoch + 7 * 86400 + 8 * 3600,
-                timezone = "UTC",
-                utcOffset = 0.0,
-                sportType = "Run"
             )
         )
 
@@ -108,10 +86,7 @@ class WeekSummaryTest {
                 elapsedTime = 1800,
                 totalElevationGain = 50.0,
                 type = "Run",
-                startDate = "2025-05-12T08:00:00Z",
-                startDateLocal = "2025-05-12T08:00:00Z",
                 startDateUnix = mondayEpoch + 8 * 3600,
-                sportType = "Run"
             ),
             ActivityDto(
                 id = "strava_run_1",
@@ -121,10 +96,7 @@ class WeekSummaryTest {
                 elapsedTime = 1795,
                 totalElevationGain = 48.0,
                 type = "Run",
-                startDate = "2025-05-12T08:00:30Z",
-                startDateLocal = "2025-05-12T08:00:30Z",
                 startDateUnix = mondayEpoch + 8 * 3600 + 30, // 30s diff
-                sportType = "Run"
             ),
             // Run 2: Tuesday Morning (Garmin + Strava)
             ActivityDto(
@@ -135,10 +107,7 @@ class WeekSummaryTest {
                 elapsedTime = 2100,
                 totalElevationGain = 60.0,
                 type = "Run",
-                startDate = "2025-05-13T07:00:00Z",
-                startDateLocal = "2025-05-13T07:00:00Z",
                 startDateUnix = mondayEpoch + 86400 + 7 * 3600,
-                sportType = "Run"
             ),
             ActivityDto(
                 id = "strava_run_2",
@@ -148,10 +117,7 @@ class WeekSummaryTest {
                 elapsedTime = 2100,
                 totalElevationGain = 58.0,
                 type = "Run",
-                startDate = "2025-05-13T07:01:00Z",
-                startDateLocal = "2025-05-13T07:01:00Z",
                 startDateUnix = mondayEpoch + 86400 + 7 * 3600 + 60, // 60s diff
-                sportType = "Run"
             ),
             // Run 3: Tuesday Afternoon (Garmin + Strava)
             ActivityDto(
@@ -162,10 +128,7 @@ class WeekSummaryTest {
                 elapsedTime = 2400,
                 totalElevationGain = 70.0,
                 type = "Run",
-                startDate = "2025-05-13T16:00:00Z",
-                startDateLocal = "2025-05-13T16:00:00Z",
                 startDateUnix = mondayEpoch + 86400 + 16 * 3600,
-                sportType = "Run"
             ),
             ActivityDto(
                 id = "strava_run_3",
@@ -175,10 +138,7 @@ class WeekSummaryTest {
                 elapsedTime = 2400,
                 totalElevationGain = 68.0,
                 type = "Run",
-                startDate = "2025-05-13T16:02:00Z",
-                startDateLocal = "2025-05-13T16:02:00Z",
                 startDateUnix = mondayEpoch + 86400 + 16 * 3600 + 120, // 2m diff
-                sportType = "Run"
             ),
             // Strength: Tuesday Evening (Garmin Strength + Strava "Other")
             ActivityDto(
@@ -189,10 +149,7 @@ class WeekSummaryTest {
                 elapsedTime = 2700,
                 totalElevationGain = 0.0,
                 type = "Strength",
-                startDate = "2025-05-13T18:00:00Z",
-                startDateLocal = "2025-05-13T18:00:00Z",
                 startDateUnix = mondayEpoch + 86400 + 18 * 3600,
-                sportType = "Strength"
             ),
             ActivityDto(
                 id = "strava_strength",
@@ -202,14 +159,10 @@ class WeekSummaryTest {
                 elapsedTime = 2700,
                 totalElevationGain = 0.0,
                 type = "Other",
-                startDate = "2025-05-13T18:00:10Z",
-                startDateLocal = "2025-05-13T18:00:10Z",
                 startDateUnix = mondayEpoch + 86400 + 18 * 3600 + 10,
-                sportType = "Other"
             )
         )
 
-        // 8 raw activities (duplicates from both Garmin and Strava)
         assertEquals(8, activities.size)
 
         val summary = activities.toWeekSummary(mondayEpoch)
@@ -223,15 +176,51 @@ class WeekSummaryTest {
     }
 
     @Test
+    fun testRunAndStrengthAtSameTimeAreNotDeduplicated() {
+        val mondayEpoch = 1747008000L
+
+        // A warm-up run followed immediately or starting at the same time as a strength session
+        val activities = listOf(
+            ActivityDto(
+                id = "run_warmup",
+                name = "Warm up run",
+                distance = 1500.0,
+                movingTime = 480,
+                elapsedTime = 480,
+                totalElevationGain = 10.0,
+                type = "Run",
+                startDateUnix = mondayEpoch + 8 * 3600,
+            ),
+            ActivityDto(
+                id = "gym_strength",
+                name = "Gym workout",
+                distance = 0.0,
+                movingTime = 2700,
+                elapsedTime = 2700,
+                totalElevationGain = 0.0,
+                type = "Strength",
+                startDateUnix = mondayEpoch + 8 * 3600 + 60, // 1 min later
+            )
+        )
+
+        val summary = activities.toWeekSummary(mondayEpoch)
+        assertEquals(1, summary.numberOfRuns)
+        assertEquals(1, summary.numberOfOthers)
+        assertEquals(1500.0, summary.totalDistance, 0.01)
+    }
+
+    @Test
     fun testMondayAndSundayStartEndCalculation() {
         // Wednesday 2025-01-15 12:34:56 UTC
-        val WednesdayEpoch = 1736944496L
+        val wednesdayEpoch = 1736944496L
 
-        val mondayEpoch = unixTimeStampToPreviousMondayMorning(WednesdayEpoch)
-        val sundayEpoch = unixTimeStampToNextSundayMidnight(WednesdayEpoch)
+        val mondayEpoch = unixTimeStampToPreviousMondayMorning(wednesdayEpoch)
+        val sundayEpoch = unixTimeStampToNextSundayMidnight(wednesdayEpoch)
+        val nextMondayEpoch = unixTimeStampToNextMondayMorning(wednesdayEpoch)
 
         val mondayLocal = Instant.ofEpochSecond(mondayEpoch).atZone(ZoneId.systemDefault())
         val sundayLocal = Instant.ofEpochSecond(sundayEpoch).atZone(ZoneId.systemDefault())
+        val nextMondayLocal = Instant.ofEpochSecond(nextMondayEpoch).atZone(ZoneId.systemDefault())
 
         assertEquals(DayOfWeek.MONDAY, mondayLocal.dayOfWeek)
         assertEquals(0, mondayLocal.hour)
@@ -242,5 +231,91 @@ class WeekSummaryTest {
         assertEquals(23, sundayLocal.hour)
         assertEquals(59, sundayLocal.minute)
         assertEquals(59, sundayLocal.second)
+
+        assertEquals(DayOfWeek.MONDAY, nextMondayLocal.dayOfWeek)
+        assertEquals(0, nextMondayLocal.hour)
+        assertEquals(0, nextMondayLocal.minute)
+        assertEquals(0, nextMondayLocal.second)
+    }
+
+    @Test
+    fun testDstTransitionWeekIncludesSundayLateNightRun() {
+        // October 2026 DST transition week in Europe: Monday 2026-10-19 to Sunday 2026-10-25 (clocks fall back at 03:00)
+        // Week start: Monday 2026-10-19 00:00:00 local time
+        val zone = ZoneId.systemDefault()
+        val mondayEpoch = java.time.LocalDate.of(2026, 10, 19).atStartOfDay(zone).toEpochSecond()
+        val nextMondayEpoch = unixTimeStampToNextMondayMorning(mondayEpoch)
+
+        // Activity on Sunday 2026-10-25 at 23:30:00 local time
+        val sundayLateRunEpoch =
+            java.time.LocalDate.of(2026, 10, 25).atTime(23, 30).atZone(zone).toEpochSecond()
+
+        val activities = listOf(
+            ActivityDto(
+                id = "sunday_late_run",
+                name = "Late Night Sunday Run",
+                distance = 8000.0,
+                movingTime = 2400,
+                elapsedTime = 2400,
+                totalElevationGain = 40.0,
+                type = "Run",
+                startDateUnix = sundayLateRunEpoch,
+            )
+        )
+
+        val summary = activities.toWeekSummary(mondayEpoch)
+        assertEquals(1, summary.numberOfRuns)
+        assertEquals(8000.0, summary.totalDistance, 0.01)
+    }
+
+    @Test
+    fun testWeekSummaryRunsAreOrderedChronologically() {
+        val mondayEpoch = 1747008000L
+
+        val activities = listOf(
+            ActivityDto(
+                id = "friday_run",
+                name = "Friday Run",
+                distance = 10000.0,
+                movingTime = 3000,
+                elapsedTime = 3000,
+                totalElevationGain = 80.0,
+                type = "Run",
+                startDateUnix = mondayEpoch + 4 * 86400 + 17 * 3600,
+            ),
+            ActivityDto(
+                id = "wednesday_walk",
+                name = "Wednesday Walk",
+                distance = 3000.0,
+                movingTime = 1800,
+                elapsedTime = 1800,
+                totalElevationGain = 10.0,
+                type = "Walk",
+                startDateUnix = mondayEpoch + 2 * 86400 + 10 * 3600,
+            ),
+            ActivityDto(
+                id = "monday_run",
+                name = "Monday Run",
+                distance = 5000.0,
+                movingTime = 1500,
+                elapsedTime = 1500,
+                totalElevationGain = 30.0,
+                type = "Run",
+                startDateUnix = mondayEpoch + 8 * 3600,
+            )
+        )
+
+        val summary = activities.toWeekSummary(mondayEpoch)
+        assertEquals(2, summary.runs.size)
+        assertEquals("monday_run", summary.runs[0].id)
+        assertEquals("friday_run", summary.runs[1].id)
+    }
+
+    @Test
+    fun testFormatPacePerKm() {
+        assertEquals("5:00 /km", formatPacePerKm(10000.0, 3000))
+        assertEquals("5:30 /km", formatPacePerKm(5000.0, 1650))
+        assertEquals("- /km", formatPacePerKm(0.0, 1000))
+        assertEquals("- /km", formatPacePerKm(5000.0, 0))
     }
 }

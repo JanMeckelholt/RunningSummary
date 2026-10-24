@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.health.connect.client.HealthConnectClient
@@ -21,11 +20,12 @@ import dagger.hilt.android.AndroidEntryPoint
 import de.janmeckelholt.runningsummary.data.HealthConnectManager
 import de.janmeckelholt.runningsummary.theme.RunningTheme
 import de.janmeckelholt.runningsummary.ui.PreparationScreen
+import de.janmeckelholt.runningsummary.ui.RunDetailsScreen
 import de.janmeckelholt.runningsummary.ui.WeekSummaryScreen
 import de.janmeckelholt.runningsummary.viewmodel.MainViewModel
-import javax.inject.Inject
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
                 mainViewModel.fetchActivities()
             } else {
                 Timber.e("Health Connect basic permissions denied. Granted: $granted")
+                mainViewModel.setErrorMessage("Health Connect permissions were denied. Please grant permissions to view your summary.")
                 mainViewModel.setStep(Steps.REQUESTING_PERMISSIONS)
             }
         }
@@ -59,9 +60,22 @@ class MainActivity : ComponentActivity() {
                         MainScreen(
                             vm = mainViewModel,
                             onRequestPermissions = {
-                                val status = healthConnectManager.getSdkStatus()
-                                Timber.i("HealthConnect SDK Status: $status (AVAILABLE=${HealthConnectClient.SDK_AVAILABLE})")
-                                requestPermissions.launch(healthConnectManager.healthPermissions)
+                                when (healthConnectManager.getSdkStatus()) {
+                                    HealthConnectClient.SDK_AVAILABLE -> {
+                                        mainViewModel.setStep(Steps.LOADING)
+                                        requestPermissions.launch(healthConnectManager.allPermissions)
+                                    }
+
+                                    HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
+                                        mainViewModel.setErrorMessage("Health Connect update required. Please update Health Connect from the Play Store.")
+                                        mainViewModel.setStep(Steps.REQUESTING_PERMISSIONS)
+                                    }
+
+                                    else -> {
+                                        mainViewModel.setErrorMessage("Health Connect is not available on this device.")
+                                        mainViewModel.setStep(Steps.REQUESTING_PERMISSIONS)
+                                    }
+                                }
                             }
                         )
                     }
@@ -81,20 +95,17 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(vm: MainViewModel, onRequestPermissions: () -> Unit) {
     val step by vm.step.collectAsStateWithLifecycle()
 
-    LaunchedEffect(step) {
-        if (step == Steps.REQUESTING_PERMISSIONS) {
-            onRequestPermissions()
-            vm.setStep(Steps.LOADING)
-        }
-    }
-
     when (step) {
-        Steps.INITIAL, Steps.REQUESTING_PERMISSIONS, Steps.LOADING, Steps.FETCHING_ACTIVITIES -> {
-            PreparationScreen(vm)
+        Steps.INITIAL, Steps.REQUESTING_PERMISSIONS, Steps.LOADING -> {
+            PreparationScreen(vm, onRequestPermissions)
         }
 
         Steps.SHOWING_SUMMARY -> {
             WeekSummaryScreen(vm)
+        }
+
+        Steps.SHOWING_RUN_DETAILS -> {
+            RunDetailsScreen(vm)
         }
     }
 }

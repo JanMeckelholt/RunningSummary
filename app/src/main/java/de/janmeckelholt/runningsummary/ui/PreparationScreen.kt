@@ -17,13 +17,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.janmeckelholt.runningsummary.Steps
 import de.janmeckelholt.runningsummary.viewmodel.MainViewModel
 
 @Composable
-fun PreparationScreen(vm: MainViewModel) {
+fun PreparationScreen(vm: MainViewModel, onRequestPermissions: () -> Unit) {
     val step by vm.step.collectAsStateWithLifecycle()
     val errorMessage by vm.errorMessage.collectAsStateWithLifecycle()
 
@@ -48,33 +49,37 @@ fun PreparationScreen(vm: MainViewModel) {
                     color = MaterialTheme.colorScheme.primary
                 )
 
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage!!,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
+
                 when (step) {
-                    Steps.REQUESTING_PERMISSIONS -> {
-                        if (errorMessage != null) {
-                            Text(
-                                text = errorMessage!!,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(bottom = 16.dp),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                        } else {
-                            Text(
-                                text = "Connect your account to see your weekly summaries from Health Connect.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(bottom = 16.dp),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                        }
+                    Steps.INITIAL, Steps.REQUESTING_PERMISSIONS -> {
+                        Text(
+                            text = if (errorMessage != null) {
+                                "Please grant access to Health Connect to view your activities."
+                            } else {
+                                "Connect your account to see your weekly summaries from Health Connect."
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(bottom = 8.dp),
+                            textAlign = TextAlign.Center
+                        )
                         Button(
-                            onClick = { vm.checkPermissionsAndFetch() },
+                            onClick = onRequestPermissions,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(text = "Connect with Health Connect")
                         }
                     }
 
-                    Steps.LOADING, Steps.FETCHING_ACTIVITIES -> {
+                    Steps.LOADING -> {
                         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                         Text(
                             text = "Loading & Fetching Data...",
@@ -82,15 +87,7 @@ fun PreparationScreen(vm: MainViewModel) {
                         )
                     }
 
-                    Steps.SHOWING_SUMMARY -> {}
-                    Steps.INITIAL -> {
-                        Button(
-                            onClick = { vm.checkPermissionsAndFetch() },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(text = "Start")
-                        }
-                    }
+                    Steps.SHOWING_SUMMARY, Steps.SHOWING_RUN_DETAILS -> {}
                 }
             }
         }

@@ -2,6 +2,7 @@ package de.janmeckelholt.runningsummary.data.models
 
 import de.janmeckelholt.runningsummary.data.database.models.ActivityDto
 import de.janmeckelholt.runningsummary.data.database.models.deduplicateActivities
+import de.janmeckelholt.runningsummary.utils.unixTimeStampToNextMondayMorning
 
 data class WeekSummary(
     val startOfWeek: Long,
@@ -10,14 +11,18 @@ data class WeekSummary(
     val totalDistance: Double,
     val totalMovingTime: Int,
     val totalElevationGain: Double,
+    val runs: List<ActivityDto> = emptyList(),
 )
 
 fun List<ActivityDto>.toWeekSummary(startOfWeek: Long): WeekSummary {
     val deduplicated = this.deduplicateActivities()
+    val endOfWeek = unixTimeStampToNextMondayMorning(startOfWeek)
     val weekActivities = deduplicated.filter { activity ->
-        activity.startDateUnix >= startOfWeek && activity.startDateUnix < startOfWeek + 7 * 24 * 60 * 60
+        activity.startDateUnix in startOfWeek until endOfWeek
     }
-    val runs = weekActivities.filter { it.type.equals("Run", ignoreCase = true) }
+    val runs = weekActivities
+        .filter { it.type.equals("Run", ignoreCase = true) }
+        .sortedBy { it.startDateUnix }
     val numberOfRuns = runs.size
     val numberOfOthers = weekActivities.size - numberOfRuns
     val totalDistance = runs.sumOf { it.distance }
@@ -30,6 +35,7 @@ fun List<ActivityDto>.toWeekSummary(startOfWeek: Long): WeekSummary {
         numberOfOthers = numberOfOthers,
         totalDistance = totalDistance,
         totalMovingTime = totalMovingTime,
-        totalElevationGain = totalElevationGain
+        totalElevationGain = totalElevationGain,
+        runs = runs,
     )
 }

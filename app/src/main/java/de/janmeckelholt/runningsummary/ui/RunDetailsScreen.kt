@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Card
@@ -25,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,7 +52,15 @@ fun RunDetailsScreen(vm: MainViewModel) {
     }
 
     val runs = weekSummary.runs
-    val selectedRun = runs.find { it.id == selectedRunId } ?: runs.firstOrNull()
+    val selectedRun = runs.find { it.id == selectedRunId } ?: runs.lastOrNull()
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(selectedRun?.id, runs.size) {
+        val selectedIndex = runs.indexOfFirst { it.id == selectedRun?.id }
+        if (selectedIndex >= 0) {
+            listState.animateScrollToItem(selectedIndex)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -112,6 +122,7 @@ fun RunDetailsScreen(vm: MainViewModel) {
             }
         } else {
             LazyRow(
+                state = listState,
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(horizontal = 4.dp)

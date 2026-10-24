@@ -1,15 +1,14 @@
 package de.janmeckelholt.runningsummary.data.database.models
 
-import android.os.Parcelable
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import de.janmeckelholt.runningsummary.Constants
-import kotlinx.parcelize.Parcelize
-import kotlinx.serialization.Serializable
 
-@Parcelize
-@Entity(tableName = Constants.ACTIVITY_TABLE_NAME)
-@Serializable
+@Entity(
+    tableName = Constants.ACTIVITY_TABLE_NAME,
+    indices = [Index(value = ["startDateUnix"])]
+)
 data class ActivityDto(
     @PrimaryKey
     val id: String,
@@ -20,13 +19,13 @@ data class ActivityDto(
     val elapsedTime: Int,
     val totalElevationGain: Double,
     val type: String,
-    val startDate: String,
-    val startDateLocal: String,
+    val startDate: String = "",
+    val startDateLocal: String = "",
     val startDateUnix: Long,
     val timezone: String? = null,
     val utcOffset: Double = 0.0,
-    val sportType: String,
-) : Parcelable
+    val sportType: String = type,
+)
 
 fun List<ActivityDto>.deduplicateActivities(): List<ActivityDto> {
     if (isEmpty()) return emptyList()
@@ -36,6 +35,12 @@ fun List<ActivityDto>.deduplicateActivities(): List<ActivityDto> {
 
     for (activity in sorted) {
         val duplicateIndex = result.indexOfFirst { existing ->
+            val existingIsRun = existing.type.equals("Run", ignoreCase = true)
+            val activityIsRun = activity.type.equals("Run", ignoreCase = true)
+
+            // A Run and a non-Run are never duplicates of each other
+            if (existingIsRun != activityIsRun) return@indexOfFirst false
+
             val startDiff = kotlin.math.abs(existing.startDateUnix - activity.startDateUnix)
 
             val existingEnd = existing.startDateUnix + existing.elapsedTime
@@ -49,21 +54,10 @@ fun List<ActivityDto>.deduplicateActivities(): List<ActivityDto> {
 
             if (!timeMatches) return@indexOfFirst false
 
-            // Type compatibility:
-            val existingIsRun = existing.type.equals("Run", ignoreCase = true)
-            val activityIsRun = activity.type.equals("Run", ignoreCase = true)
             if (existingIsRun && activityIsRun) return@indexOfFirst true
 
-            val existingIsGeneric =
-                existing.type.equals("Other", ignoreCase = true) || existing.type.isBlank()
-            val activityIsGeneric =
-                activity.type.equals("Other", ignoreCase = true) || activity.type.isBlank()
-            if (existingIsGeneric || activityIsGeneric) return@indexOfFirst true
-
-            // If neither is a run (e.g. Strength vs Workout/Other)
-            if (!existingIsRun && !activityIsRun) return@indexOfFirst true
-
-            existing.type.equals(activity.type, ignoreCase = true)
+            // For non-runs, prefer matching if either is generic or both are non-runs with overlapping time
+            true
         }
 
         if (duplicateIndex != -1) {
@@ -83,8 +77,8 @@ private fun selectBetterActivity(a: ActivityDto, b: ActivityDto): ActivityDto {
     if (aIsRun && !bIsRun) return a
     if (!aIsRun && bIsRun) return b
 
-    val aIsOther = a.type.equals("Other", ignoreCase = true)
-    val bIsOther = b.type.equals("Other", ignoreCase = true)
+    val aIsOther = a.type.equals("Other", ignoreCase = true) || a.type.isBlank()
+    val bIsOther = b.type.equals("Other", ignoreCase = true) || b.type.isBlank()
     if (!aIsOther && bIsOther) return a
     if (aIsOther && !bIsOther) return b
 
